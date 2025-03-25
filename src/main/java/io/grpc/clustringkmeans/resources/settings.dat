@@ -1,0 +1,4 @@
+DATASET_PATH=insurance_v1.csv
+OUTPUT_PATH=cluster_assignments_2d.csv
+CLUSTERS_NUMBERS=5
+K=20
