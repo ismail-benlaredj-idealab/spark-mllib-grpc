@@ -16,8 +16,9 @@ service Greeter {
 
 // The request message containing the user's name.
 message Request {
-  string datasetName = 1;
-  string algorithm=2;
+  string datasetPath = 1;
+  string datasetName = 2;
+  string algorithm=3;
 }
 
 // The response message containing the greetings

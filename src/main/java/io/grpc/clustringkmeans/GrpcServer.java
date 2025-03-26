@@ -85,13 +85,14 @@ public class GrpcServer {
         return null;
     }
 
-    private static void clustringKmeans(String datasetPath) {
+    private static void clustringKmeans(String datasetPath, String datasetName, String algorithm) {
         SparkConf conf = new SparkConf().setAppName("JavaKMeansExample").setMaster("local");
         JavaSparkContext jsc = new JavaSparkContext(conf);
 
         // Load and parse data
         // String dataset_path = readSettings("DATASET_PATH");
         String dataset_path = datasetPath;
+        // String outputPath = readSettings("OUTPUT_PATH");
         String outputPath = readSettings("OUTPUT_PATH");
         JavaRDD<String> data = jsc.textFile(dataset_path);
 
@@ -300,41 +301,43 @@ public class GrpcServer {
                 plotCoordinates[i][1] = allPoints.get(i).apply(dim2);
             }
 
-            System.out.println("Using dimensions with highest variance for 2D projection");
         }
 
-        // Write the results to a CSV file suitable for plotting
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(outputPath))) {
-            // Write header
-            if (xAxisColumn >= 0 && yAxisColumn >= 0) {
-                writer.write(columns[xAxisColumn] + "," + columns[yAxisColumn] + ",cluster\n");
-            } else {
-                writer.write("Dimension1,Dimension2,cluster\n");
-            }
+        // // Write the results to a CSV file suitable for plotting
+        // try (BufferedWriter writer = new BufferedWriter(new FileWriter(outputPath)))
+        // {
+        // // Write header
+        // if (xAxisColumn >= 0 && yAxisColumn >= 0) {
+        // writer.write(columns[xAxisColumn] + "," + columns[yAxisColumn] +
+        // ",cluster\n");
+        // } else {
+        // writer.write("Dimension1,Dimension2,cluster\n");
+        // }
 
-            // Write data rows with cluster assignments and 2D coordinates for plotting
-            for (int i = 0; i < rows.size(); i++) {
-                StringBuilder sb = new StringBuilder();
+        // // Write data rows with cluster assignments and 2D coordinates for plotting
+        // for (int i = 0; i < rows.size(); i++) {
+        // StringBuilder sb = new StringBuilder();
 
-                // Write 2D coordinates
-                sb.append(plotCoordinates[i][0]).append(",");
-                sb.append(plotCoordinates[i][1]).append(",");
+        // // Write 2D coordinates
+        // sb.append(plotCoordinates[i][0]).append(",");
+        // sb.append(plotCoordinates[i][1]).append(",");
 
-                // Add cluster assignment
-                sb.append(allPredictions.get(i));
-                sb.append("\n");
+        // // Add cluster assignment
+        // sb.append(allPredictions.get(i));
+        // sb.append("\n");
 
-                writer.write(sb.toString());
-            }
+        // writer.write(sb.toString());
+        // }
 
-            System.out.println("Cluster assignments with 2D coordinates saved to " + outputPath);
-        } catch (IOException e) {
-            System.err.println("Error writing to CSV file: " + e.getMessage());
-            e.printStackTrace();
-        }
+        // System.out.println("Cluster assignments with 2D coordinates saved to " +
+        // outputPath);
+        // } catch (IOException e) {
+        // System.err.println("Error writing to CSV file: " + e.getMessage());
+        // e.printStackTrace();
+        // }
 
         // Write a second file with complete data for further analysis
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter("complete_cluster_assignments.csv"))) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(outputPath+algorithm+"_"+datasetName+".csv"))) {
             // Write header with additional columns for plotting coordinates
             if (xAxisColumn >= 0 && yAxisColumn >= 0) {
                 writer.write(header + ",plot_x,plot_y,cluster\n");
@@ -390,80 +393,75 @@ public class GrpcServer {
 
     private static class GreeterImpl extends GreeterGrpc.GreeterImplBase {
         @Override
-public void clustringKmeansServer(Request req, StreamObserver<Response> responseObserver) {
-    try {
-        // Log start of processing
-        System.out.println("***************************** RUN CODE HERE *****************************************************");
-        long startTime = System.nanoTime();
+        public void clustringKmeansServer(Request req, StreamObserver<Response> responseObserver) {
+            try {
+                // Log start of processing
+                System.out.println(
+                        "***************************** RUN CODE HERE *****************************************************");
+                long startTime = System.nanoTime();
 
-        // Perform clustering
-        clustringKmeans(req.getDatasetName());
+                // Perform clustering
+                clustringKmeans(req.getDatasetPath(), req.getDatasetName(), req.getAlgorithm());
 
-        // Calculate execution time
-        long endTime = System.nanoTime();
-        double executionTimeInSeconds = (endTime - startTime) / 1_000_000_000.0;
-        writeExecutionTimeToCSV("executionTime", executionTimeInSeconds);
+                // Calculate execution time
+                long endTime = System.nanoTime();
+                double executionTimeInSeconds = (endTime - startTime) / 1_000_000_000.0;
+                writeExecutionTimeToCSV("executionTime", executionTimeInSeconds);
 
-        // Prepare file to send
-        File fileToSend = new File("/home/ismail/grpc-java-examples-master/complete_cluster_assignments.csv");
-        
-        // Validate file exists
-        if (!fileToSend.exists()) {
-            throw new FileNotFoundException("Output file not found: " + fileToSend.getAbsolutePath());
+                // Prepare file to send
+                File fileToSend = new File(req.getAlgorithm()+"_"+req.getDatasetName()+".csv");
+
+                // Validate file exists
+                if (!fileToSend.exists()) {
+                    throw new FileNotFoundException("Output file not found: " + fileToSend.getAbsolutePath());
+                }
+
+                // Read entire file content
+                byte[] fileContent = java.nio.file.Files.readAllBytes(fileToSend.toPath());
+
+                // Create a single response with full file content
+                Response response = Response.newBuilder()
+                        .setFileName(fileToSend.getName())
+                        .setFileContent(com.google.protobuf.ByteString.copyFrom(fileContent))
+                        .setNodeName(System.getProperty("user.name"))
+                        .build();
+
+                // Send the response
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+
+            } catch (Exception e) {
+                // Handle any errors during processing
+                System.err.println("Error processing request: " + e.getMessage());
+                e.printStackTrace();
+
+                // Send error response
+                responseObserver.onError(Status.INTERNAL
+                        .withDescription("Error processing file: " + e.getMessage())
+                        .asRuntimeException());
+            }
         }
-
-        // Read entire file content
-        byte[] fileContent = java.nio.file.Files.readAllBytes(fileToSend.toPath());
-
-        // Create a single response with full file content
-        Response response = Response.newBuilder()
-            .setFileName(fileToSend.getName())
-            .setFileContent(com.google.protobuf.ByteString.copyFrom(fileContent))
-            .setNodeName(System.getProperty("user.name"))
-            .build();
-
-        // Send the response
-        responseObserver.onNext(response);
-        responseObserver.onCompleted();
-
-    } catch (Exception e) {
-        // Handle any errors during processing
-        System.err.println("Error processing request: " + e.getMessage());
-        e.printStackTrace();
-        
-        // Send error response
-        responseObserver.onError(Status.INTERNAL
-            .withDescription("Error processing file: " + e.getMessage())
-            .asRuntimeException());
     }
-}
-       
-      
-
-    }
- 
- 
     /**
-         * Main launches the server from the command line.
-         */
+     * Main launches the server from the command line.
+     */
     public static void main(String[] args) throws IOException, InterruptedException {
-           // Create server instance
-           final GrpcServer server = new GrpcServer();
-        
+        // Create server instance
+        final GrpcServer server = new GrpcServer();
 
-           // Add shutdown hook
-           Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-               System.err.println("*** shutting down gRPC server since JVM is shutting down");
-               try {
-                   server.stop();
-               } catch (InterruptedException e) {
-                   e.printStackTrace(System.err);
-               }
-               System.err.println("*** server shut down");
-           }));
-           
-           // Block and wait for shutdown
-           server.blockUntilShutdown();
-       
+        // Add shutdown hook
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            System.err.println("*** shutting down gRPC server since JVM is shutting down");
+            try {
+                server.stop();
+            } catch (InterruptedException e) {
+                e.printStackTrace(System.err);
+            }
+            System.err.println("*** server shut down");
+        }));
+
+        // Block and wait for shutdown
+        server.blockUntilShutdown();
+
     }
 }

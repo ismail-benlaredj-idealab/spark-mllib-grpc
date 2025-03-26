@@ -35,9 +35,13 @@ public class Client {
         channel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
     }
 
-    public void applyAnalytics(String name) {
-        logger.info("Requesting file for dataset: " + name + " ...");
-        Request request = Request.newBuilder().setDatasetName(name).build();
+    public void applyAnalytics(String datasetPath, String datasetName, String algorithm ) {
+        logger.info("Requesting file for dataset: " + datasetName + " ...");
+        Request request = Request.newBuilder()
+        .setDatasetPath(datasetPath)
+        .setDatasetName(datasetName)
+        .setAlgorithm(algorithm)
+        .build();
 
         try {
             // Ensure received_files directory exists
@@ -93,7 +97,7 @@ public class Client {
         Client client = new Client("localhost", 50051);
         try {
             String dataset_path = args.length > 0 ? args[0] : readSettings("DATASET_PATH");
-            client.applyAnalytics(dataset_path);
+            client.applyAnalytics(dataset_path,"insurance", "kmeans");
         } finally {
             client.shutdown();
         }
