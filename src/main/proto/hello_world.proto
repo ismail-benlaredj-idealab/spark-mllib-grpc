@@ -2,10 +2,10 @@
 
 syntax = "proto3";
 
-package clustringkmeans;
+package analytics;
 
 option java_multiple_files = true;
-option java_package = "io.grpc.clustringkmeans";
+option java_package = "io.grpc.analytics";
 option java_outer_classname = "HelloWorldProto";
 
 // The greeting service definition.
@@ -20,10 +20,26 @@ message Request {
   string datasetName = 2;
   string algorithm=3;
 }
-
+ 
 // The response message containing the greetings
 message Response {
 string file_name = 1;
 bytes file_content = 2;
 string nodeName = 3;
+}
+
+service FrequentItems {
+  rpc ftGrowth (RequestFrequentItems) returns (ResponseFrequentItems) {}
+}
+
+message RequestFrequentItems{
+  string datasetPath = 1;
+  string datasetName = 2;
+  string outputPath = 3;
+}
+ 
+// The response message containing the greetings
+message ResponseFrequentItems {
+string file_name = 1;
+bytes file_content = 2;
 }
