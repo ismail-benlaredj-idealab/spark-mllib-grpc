@@ -10,6 +10,8 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -76,13 +78,13 @@ public class Client {
         }
     }
 
-   public void applyFpGrowth (String datasetName){
+   public void applyFpGrowth (String datasetName, String datasetPath, String outputPath){
     String mainPath = readSettings("DATASET_PATH");
     mainPath= Paths.get(mainPath).toAbsolutePath().toString();
     RequestFrequentItems request = RequestFrequentItems.newBuilder()
-    .setDatasetPath(mainPath+"/"+datasetName)
+    .setDatasetPath(datasetPath)
     .setDatasetName(datasetName)
-    .setOutputPath(mainPath)
+    .setOutputPath(outputPath)
     .build();
     try {
         // Ensure received_files directory exists
@@ -117,13 +119,46 @@ public class Client {
 
    }
     public static void main(String[] args) throws Exception {
-        Client client = new Client("localhost", 50051);
+       // Client client = new Client("localhost", 50051);
+        // List of nodes to execute on
+       // List<String> nodes = Arrays.asList("pe01-vm04", "pe01-vm05", "pe01-vm06", "pe02-vm04", "pe02-vm05", "pe02-vm06");
+        List<String> nodes = Arrays.asList("pe01-vm06");
+
+        // List of algorithms to run
+        //List<String> algorithms = Arrays.asList("kanonymity", "ldiversity", "tcloseness");
+        List<String> algorithms = Arrays.asList("kanonymity", "ldiversity", "tcloseness");
+        for (String node : nodes) {
+            Client client = new Client(node, 50051);
+        
         try {
             String dataset_path = args.length > 0 ? args[0] : readSettings("DATASET_PATH");
             // client.applyAnalytics(dataset_path,"insurance", "kmeans");
-            client.applyFpGrowth("insurance_v1.csv");
+           
+            
+            // Determine the dataset prefix based on the node (pe01 for banking, pe02 for insurance)
+            String datasetPrefix = node.startsWith("pe02") ? "insurance" : "banking";
+            
+            // Iterate over each algorithm
+            for (String algorithm : algorithms) {
+                // Construct the dataset filename based on the algorithm
+                String datasetFileName = "anonymized_" + algorithm + "_" + datasetPrefix + "_synthetic.csv";
+
+                // Construct the dataset path
+                String datasetPath = args.length > 0 
+                    ? args[0] 
+                    : "/home/" + node + readSettings("DATASET_PATH") + "/" + datasetFileName;	
+                String outputPath="/home/" + node + readSettings("OUTPUT_PATH");
+                // Execute the analytics operation
+                //client.applyAnalytics(datasetPath, "banking_" + algorithm, "kmeans");
+                System.out.println(datasetPath);
+               client.applyFpGrowth(datasetFileName,datasetPath,outputPath);
+               
+               
+            }
+            
         } finally {
             client.shutdown();
+        }
         }
     }
 

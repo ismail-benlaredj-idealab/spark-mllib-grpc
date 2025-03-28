@@ -122,7 +122,8 @@ public class GrpcServer {
     private static class FrequentItemsImpl extends FrequentItemsGrpc.FrequentItemsImplBase {
         @Override
         public void ftGrowth(RequestFrequentItems req, StreamObserver<ResponseFrequentItems> responseObserver) {
-            try{
+        	System.out.println(req.getDatasetPath());
+          try{
             SparkConf conf = new SparkConf().setAppName("ftGrowth").setMaster("local");
             String datasetPath = req.getDatasetPath();
             String datasetName = req.getDatasetName();
