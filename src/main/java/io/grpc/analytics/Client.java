@@ -46,36 +46,6 @@ public class Client {
         .setDatasetName(datasetName)
         .setAlgorithm(algorithm)
         .build();
-
-        try {
-            // Ensure received_files directory exists
-            File outputFolder = new File("received_files");
-            if (!outputFolder.exists()) {
-                outputFolder.mkdirs();
-            }
-            // Get the response from the server
-            Response response = blockingStub.clustringKmeansServer(request);
-            // Validate response
-            if (response == null || response.getFileContent().isEmpty()) {
-                logger.severe("No file content received from server");
-                return;
-            }
-            // Sanitize filename
-            String sanitizedFileName = response.getNodeName() + "_" + response.getFileName();
-            System.out.println(response.getFileName() + response.getNodeName().toString());
-            // Create output file
-            File outputFile = new File(outputFolder, sanitizedFileName);
-            // Write file content
-            try (FileOutputStream fos = new FileOutputStream(outputFile)) {
-                response.getFileContent().writeTo(fos);
-                logger.info("File saved successfully: " + outputFile.getAbsolutePath());
-            } catch (IOException e) {
-                logger.log(Level.SEVERE, "Error writing file: " + e.getMessage(), e);
-            }
-
-        } catch (StatusRuntimeException e) {
-            logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
-        }
     }
 
    public void applyFpGrowth (String datasetName, String datasetPath, String outputPath){
@@ -86,37 +56,6 @@ public class Client {
     .setDatasetName(datasetName)
     .setOutputPath(outputPath)
     .build();
-    try {
-        // Ensure received_files directory exists
-        File outputFolder = new File(readSettings("RECEIVED_FILES_PATH")+"");
-        if (!outputFolder.exists()) {
-            outputFolder.mkdirs();
-        }
-        // Get the response from the server
-        ResponseFrequentItems response = blockingStubFP.ftGrowth(request);
-        // Validate response
-        if (response == null || response.getFileContent().isEmpty()) {
-            logger.severe("No file content received from server");
-            return;
-        }
-        // Sanitize filename
-        String sanitizedFileName = response.getFileName();
-        System.out.println(response.getFileName() );
-        // Create output file
-        File outputFile = new File(outputFolder, sanitizedFileName);
-        // Write file content
-        try (FileOutputStream fos = new FileOutputStream(outputFile)) {
-            response.getFileContent().writeTo(fos);
-            logger.info("File saved successfully: " + outputFile.getAbsolutePath());
-        } catch (IOException e) {
-            logger.log(Level.SEVERE, "Error writing file: " + e.getMessage(), e);
-        }
-    } catch (StatusRuntimeException e) {
-        logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
-    }
-
-
-
    }
     public static void main(String[] args) throws Exception {
        // Client client = new Client("localhost", 50051);
