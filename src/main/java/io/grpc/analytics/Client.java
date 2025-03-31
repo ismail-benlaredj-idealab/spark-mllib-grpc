@@ -138,7 +138,7 @@ public class Client {
                     : "/home/" + node + readSettings("DATASET_PATH") + "/" + datasetFileName;	
                 String outputPath="/home/" + node + readSettings("OUTPUT_PATH");
                 // Execute the analytics operation
-                //client.applyAnalytics(datasetPath, "banking_" + algorithm, "kmeans");
+                client.applyAnalytics(datasetPath, "banking_" + algorithm, "kmeans");
                 System.out.println(datasetPath);
                client.applyFpGrowth(datasetFileName,datasetPath,outputPath);
                
