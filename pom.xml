@@ -74,13 +74,13 @@ limitations under the License.
         </configuration>
         <executions>
           <execution> 
-            <goals> 
+            <goals>
               <goal>compile</goal>
               <goal>compile-custom</goal>
             </goals> 
-          </execution>
+          </execution> 
         </executions>
       </plugin>
-    </plugins>
+    </plugins>  
   </build>
 </project>

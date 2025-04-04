@@ -9,6 +9,7 @@ import io.grpc.stub.StreamObserver;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -23,6 +24,8 @@ import org.apache.spark.mllib.clustering.KMeans;
 import org.apache.spark.mllib.clustering.KMeansModel;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.Vectors;
+
+import com.google.protobuf.ByteString;
 
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -42,6 +45,7 @@ public class GrpcServer {
         server = NettyServerBuilder.forPort(port)
                 .addService(new GreeterImpl())
                 .addService(new FrequentItemsImpl())
+                .addService(new DatasetAccessImpl())
                 .build()
                 .start();
 
@@ -122,31 +126,74 @@ public class GrpcServer {
     private static class FrequentItemsImpl extends FrequentItemsGrpc.FrequentItemsImplBase {
         @Override
         public void ftGrowth(RequestFrequentItems req, StreamObserver<ResponseFrequentItems> responseObserver) {
-        	System.out.println(req.getDatasetPath());
-          try{
-            SparkConf conf = new SparkConf().setAppName("ftGrowth").setMaster("local");
-            String datasetPath = req.getDatasetPath();
-            String datasetName = req.getDatasetName();
-            String outputPath = req.getOutputPath();
-            FPgrowth ftgrowth = new FPgrowth(conf, datasetPath, 0.05, 20,
-                    outputPath, datasetName);
-            ftgrowth.analyze();
+            System.out.println(req.getDatasetPath());
+            try {
+                SparkConf conf = new SparkConf().setAppName("ftGrowth").setMaster("local");
+                String datasetPath = req.getDatasetPath();
+                String datasetName = req.getDatasetName();
+                String outputPath = req.getOutputPath();
+                FPgrowth ftgrowth = new FPgrowth(conf, datasetPath, 0.05, 20,
+                        outputPath, datasetName);
+                ftgrowth.analyze();
 
-            File fileToSend = new File(outputPath+"/"+System.getProperty("user.name")+"_"+datasetName.split("\\.")[0]+"_FP_Growth.dat");
+                File fileToSend = new File(outputPath + "/" + System.getProperty("user.name") + "_"
+                        + datasetName.split("\\.")[0] + "_FP_Growth.dat");
+                byte[] fileContent = java.nio.file.Files.readAllBytes(fileToSend.toPath());
+
+                ResponseFrequentItems response = ResponseFrequentItems.newBuilder()
+                        .setFileName(
+                                System.getProperty("user.name") + "_" + datasetName.split("\\.")[0] + "_FP_Growth.dat")
+                        .setFileContent(com.google.protobuf.ByteString.copyFrom(fileContent))
+                        .build();
+                responseObserver.onNext(response);
+                responseObserver.onCompleted();
+            } catch (Exception e) {
+                responseObserver.onError(Status.INTERNAL
+                        .withDescription("Error processing file: " + e.getMessage())
+                        .asRuntimeException());
+            }
+        }
+    }
+
+    private static class DatasetAccessImpl extends DatasetAccessGrpc.DatasetAccessImplBase {
+        @Override
+        public void remoteDataset(RequestDatasetAccess req, StreamObserver<ResponseDatasetAccess> responseObserver) {
+            String datasetName = req.getDatasetName(),
+            datasetPath = req.getDatasetPath();
+        
+            try {
+            // Prepare file to send
+            File fileToSend = new File(datasetPath + "/" + datasetName);
+
+            // Validate file exists
+            if (!fileToSend.exists()) {
+                throw new FileNotFoundException("Output file not found: " + fileToSend.getAbsolutePath());
+            }
+
+            // Read entire file content
             byte[] fileContent = java.nio.file.Files.readAllBytes(fileToSend.toPath());
 
-            ResponseFrequentItems response = ResponseFrequentItems.newBuilder()
-                    .setFileName(System.getProperty("user.name")+"_"+datasetName.split("\\.")[0]+"_FP_Growth.dat")
+            // Create a single response with full file content
+            ResponseDatasetAccess response = ResponseDatasetAccess.newBuilder()
                     .setFileContent(com.google.protobuf.ByteString.copyFrom(fileContent))
                     .build();
+ 
+            // Send the response
             responseObserver.onNext(response);
             responseObserver.onCompleted();
-        }catch (Exception e) {
+
+        } catch (Exception e) {
+            // Handle any errors during processing
+            System.err.println("Error processing request: " + e.getMessage());
+            e.printStackTrace();
+
+            // Send error response
             responseObserver.onError(Status.INTERNAL
                     .withDescription("Error processing file: " + e.getMessage())
                     .asRuntimeException());
         }
     }
+    
     }
 
     /**

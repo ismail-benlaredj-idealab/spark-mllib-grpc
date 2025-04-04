@@ -11,41 +11,41 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * A simple client that requests a file from the {@link GrpcServer}.
- */
-public class Client {
+import org.omg.CORBA.Any;
+
+public class ClientAgg {
+
     private static final Logger logger = Logger.getLogger(Client.class.getName());
 
     private final ManagedChannel channel;
-    private final GreeterGrpc.GreeterBlockingStub blockingStub;
-    private final FrequentItemsGrpc.FrequentItemsBlockingStub blockingStubFP;
+    private final DatasetAccessGrpc.DatasetAccessBlockingStub blockingStubFP;
 
     /** Construct client connecting to server at {@code host:port}. */
-    public Client(String host, int port) {
+    public ClientAgg(String host, int port) {
         channel = ManagedChannelBuilder.forAddress(host, port)
                 .usePlaintext() // Note: For production, use proper authentication
                 .build();
-        blockingStub = GreeterGrpc.newBlockingStub(channel);
-        blockingStubFP = FrequentItemsGrpc.newBlockingStub(channel);
+        blockingStubFP = DatasetAccessGrpc.newBlockingStub(channel);
     }
 
     public void shutdown() throws InterruptedException {
         channel.shutdown().awaitTermination(5, TimeUnit.SECONDS);
     }
 
-    public void applyAnalytics(String datasetPath, String datasetName, String algorithm) {
-        logger.info("Requesting file for dataset: " + datasetName + " ...");
-        Request request = Request.newBuilder()
-                .setDatasetPath(datasetPath)
-                .setDatasetName(datasetName)
-                .setAlgorithm(algorithm)
-                .build();
+    public void getRemoteDatasets(String datasetName, String datasetPath) {
+        RequestDatasetAccess request = RequestDatasetAccess.newBuilder()
+        .setDatasetPath(datasetPath)
+        .setDatasetName(datasetName)
+        .setOutputPath("/home/ismail/grpc-java-examples-master/received_files")
+        .build();
 
         try {
             // Ensure received_files directory exists
@@ -53,64 +53,37 @@ public class Client {
             if (!outputFolder.exists()) {
                 outputFolder.mkdirs();
             }
+
             // Get the response from the server
-            Response response = blockingStub.clustringKmeansServer(request);
+            ResponseDatasetAccess response = blockingStubFP.remoteDataset(request);
+
             // Validate response
             if (response == null || response.getFileContent().isEmpty()) {
                 logger.severe("No file content received from server");
                 return;
             }
-            // Sanitize filename
-            String sanitizedFileName = response.getNodeName() + "_" + response.getFileName();
-            System.out.println(response.getFileName() + response.getNodeName().toString());
-            // Create output file
-            File outputFile = new File(outputFolder, sanitizedFileName);
 
-        } catch (StatusRuntimeException e) {
-            logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
-        }
-    }
-
-    public void applyFpGrowth(String datasetName, String datasetPath, String outputPath) {
-        String mainPath = readSettings("DATASET_PATH");
-        mainPath = Paths.get(mainPath).toAbsolutePath().toString();
-        RequestFrequentItems request = RequestFrequentItems.newBuilder()
-                .setDatasetPath(datasetPath)
-                .setDatasetName(datasetName)
-                .setOutputPath(outputPath)
-                .build();
-        try {
-            // Ensure received_files directory exists
-            File outputFolder = new File(readSettings("RECEIVED_FILES_PATH") + "");
-            if (!outputFolder.exists()) {
-                outputFolder.mkdirs();
-            }
-            // Get the response from the server
-            ResponseFrequentItems response = blockingStubFP.ftGrowth(request);
-            // Validate response
-            if (response == null || response.getFileContent().isEmpty()) {
-                logger.severe("No file content received from server");
-                return;
-            }
             // Sanitize filename
-            String sanitizedFileName = response.getFileName();
-            System.out.println(response.getFileName());
+            // String sanitizedFileName = response.getNodeName() + "_" + response.getFileName();
+            // System.out.println(response.getFileName() + response.getNodeName().toString());
             // Create output file
-            File outputFile = new File(outputFolder, sanitizedFileName);
+            File outputFile = new File(outputFolder, datasetName);
+
             // Write file content
+            try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                response.getFileContent().writeTo(fos);
+                logger.info("File saved successfully: " + outputFile.getAbsolutePath());
+            } catch (IOException e) {
+                logger.log(Level.SEVERE, "Error writing file: " + e.getMessage(), e);
+            }
 
         } catch (StatusRuntimeException e) {
             logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
         }
-
     }
-
-
-  
 
     public static void main(String[] args) throws Exception {
-        // Client client = new Client("localhost", 50051);
-        // List of nodes to execute on
+
         String MODE = "dev"; // dev or prod
 
         if (MODE == "prod") {
@@ -137,16 +110,6 @@ public class Client {
 
                     // Iterate over each algorithm
                     for (String algorithm : algorithms) {
-                        // Construct the dataset filename based on the algorithm
-                        String datasetFileName = "anonymized_" + algorithm + "_" + datasetPrefix + "_synthetic.csv";
-
-                        // Construct the dataset path
-                        String datasetPath = "/home/" + node + readSettings("DATASET_PATH") + "/" + datasetFileName;
-                        String outputPath = "/home/" + node + readSettings("OUTPUT_PATH");
-                        // Execute the analytics operation
-                        client.applyAnalytics(datasetPath, "banking_" + algorithm, "kmeans");
-                        System.out.println(datasetPath);
-                        client.applyFpGrowth(datasetFileName, datasetPath, outputPath);
 
                     }
 
@@ -155,8 +118,8 @@ public class Client {
                 }
             }
         } else {
-            Client client = new Client("localhost", 50051);
-            client.applyAnalytics("anonymized_tcloseness_banking_synthetic.csv", "banking_", "kmeans");
+            ClientAgg ClientAgg = new ClientAgg("localhost", 50051);
+            ClientAgg.getRemoteDatasets("aaa", "insurance_v1.csv");
 
         }
     }
