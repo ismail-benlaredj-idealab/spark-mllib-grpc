@@ -8,22 +8,28 @@ import io.grpc.stub.StreamObserver;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.logging.Logger;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.ml.PipelineModel;
 import org.apache.spark.mllib.clustering.KMeans;
 import org.apache.spark.mllib.clustering.KMeansModel;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.Vectors;
+import org.apache.spark.sql.SparkSession;
 
 import com.google.protobuf.ByteString;
 
@@ -46,6 +52,7 @@ public class GrpcServer {
                 .addService(new GreeterImpl())
                 .addService(new FrequentItemsImpl())
                 .addService(new DatasetAccessImpl())
+                .addService(new RandomForestImpl())
                 .build()
                 .start();
 
@@ -160,40 +167,64 @@ public class GrpcServer {
         public void remoteDataset(RequestDatasetAccess req, StreamObserver<ResponseDatasetAccess> responseObserver) {
             String datasetName = req.getDatasetName(),
             datasetPath = req.getDatasetPath();
-        
-            try {
-            // Prepare file to send
-            File fileToSend = new File(datasetPath + "/" + datasetName);
-
-            // Validate file exists
-            if (!fileToSend.exists()) {
-                throw new FileNotFoundException("Output file not found: " + fileToSend.getAbsolutePath());
-            }
-
-            // Read entire file content
-            byte[] fileContent = java.nio.file.Files.readAllBytes(fileToSend.toPath());
-
-            // Create a single response with full file content
-            ResponseDatasetAccess response = ResponseDatasetAccess.newBuilder()
-                    .setFileContent(com.google.protobuf.ByteString.copyFrom(fileContent))
-                    .build();
  
-            // Send the response
-            responseObserver.onNext(response);
-            responseObserver.onCompleted();
-
-        } catch (Exception e) {
-            // Handle any errors during processing
-            System.err.println("Error processing request: " + e.getMessage());
-            e.printStackTrace();
-
-            // Send error response
-            responseObserver.onError(Status.INTERNAL
-                    .withDescription("Error processing file: " + e.getMessage())
-                    .asRuntimeException());
+     try {
+         File sourceFolder = new File(datasetPath + "/" + datasetName);
+ 
+         // Validate file/folder exists
+         if (!sourceFolder.exists()) {
+             throw new FileNotFoundException("Dataset not found: " + sourceFolder.getAbsolutePath());
+         }
+ 
+         ByteString contentToSend;
+         
+         if (sourceFolder.isDirectory()) {
+             // If it's a directory, zip the contents
+             contentToSend = zipFolder(sourceFolder);
+             System.out.println("Zipped folder " + sourceFolder.getName() + " for transmission");
+         } else {
+             // If it's a single file, just read the bytes
+             contentToSend = ByteString.copyFrom(Files.readAllBytes(sourceFolder.toPath()));
+             System.out.println("Read file " + sourceFolder.getName() + " for transmission");
+         }
+ 
+         // Create response with the content (either zipped folder or single file)
+         ResponseDatasetAccess response = ResponseDatasetAccess.newBuilder()
+                 .setFileContent(contentToSend)
+                 .setIsZippedFolder(sourceFolder.isDirectory()) 
+                 .build();
+ 
+         // Send the response
+         responseObserver.onNext(response);
+         responseObserver.onCompleted();
+         
+         System.out.println("Successfully sent " + sourceFolder.getName());
+ 
+     } catch (Exception e) {
+         // Handle any errors during processing
+         System.err.println("Error processing request: " + e.getMessage());
+         e.printStackTrace();
+ 
+         // Send error response
+         responseObserver.onError(Status.INTERNAL
+                 .withDescription("Error processing dataset: " + e.getMessage())
+                 .asRuntimeException());
+     }
         }
+
     }
-    
+
+    private static class RandomForestImpl extends RandomForestGrpc.RandomForestImplBase {
+        @Override
+        public void randomForestAnalytics(RequestRandomForest req, StreamObserver<ResponseRandomForest> responseObserver) {
+            SparkSession spark = SparkSession.builder()
+                    .appName("RandomForestExample")
+                    .master("local[*]")
+                    .getOrCreate();
+            RandomForestAnalytics analytics = new RandomForestAnalytics(spark, req.getDatasetPath());
+            analytics.runAnalysis();
+            spark.stop();
+        }
     }
 
     /**
@@ -545,4 +576,68 @@ public class GrpcServer {
         jsc.stop();
     }
 
+
+
+
+
+private static ByteString zipFolder(File folderToZip) throws Exception {
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    ZipOutputStream zos = new ZipOutputStream(baos);
+    
+    // Get folder path for creating relative paths in zip
+    String folderPath = folderToZip.getAbsolutePath();
+    
+    System.out.println("Creating zip from folder: " + folderPath);
+    
+    // Recursively add folder contents to zip
+    addFolderToZip(folderToZip, folderToZip.getName(), zos);
+    
+    // Close the zip stream
+    zos.close();
+    
+    // Convert to ByteString
+    return ByteString.copyFrom(baos.toByteArray());
+}
+
+/**
+ * Recursively adds files and directories to the zip
+ * @param file Current file or folder being processed
+ * @param entryPath Path within the zip file
+ * @param zos Zip output stream
+ */
+private static void addFolderToZip(File file, String entryPath, ZipOutputStream zos) throws Exception {
+    if (file.isDirectory()) {
+        // For directories, recursively process all contents
+        File[] files = file.listFiles();
+        
+        // First, add this directory entry
+        zos.putNextEntry(new ZipEntry(entryPath + "/"));
+        zos.closeEntry();
+        
+        if (files != null) {
+            for (File childFile : files) {
+                // Recursive call with updated entry path
+                addFolderToZip(childFile, entryPath + "/" + childFile.getName(), zos);
+            }
+        }
+    } else {
+        // For files, add file content to zip
+        FileInputStream fis = new FileInputStream(file);
+        
+        // Create a new entry in the zip
+        ZipEntry zipEntry = new ZipEntry(entryPath);
+        zos.putNextEntry(zipEntry);
+        
+        // Write file content to zip
+        byte[] buffer = new byte[1024];
+        int length;
+        while ((length = fis.read(buffer)) > 0) {
+            zos.write(buffer, 0, length);
+        }
+        
+        // Close resources
+        zos.closeEntry();
+        fis.close();
+    }
+}
 }

@@ -22,17 +22,37 @@ import java.util.Arrays;
 import java.util.List;
 
 public class RandomForestAnalytics {
-
-    public static void main(String[] args) {
-        // Initialize Spark session
-        SparkSession spark = SparkSession.builder()
-                .appName("RandomForestExample")
-                .master("local[*]")
-                .getOrCreate();
-
-        // Path to your dataset - update this
-        String datasetPath = "/home/ismail/grpc-java-examples-master/insurance_v1.csv";
-
+    private SparkSession spark;
+    private String datasetPath;
+    private String outputDir = "node1";
+    
+    /**
+     * Constructor for RandomForestAnalytics
+     * @param sparkSession An existing SparkSession
+     * @param datasetPath Path to the CSV dataset
+     */
+    public RandomForestAnalytics(SparkSession sparkSession, String datasetPath) {
+        this.spark = sparkSession;
+        this.datasetPath = datasetPath;
+    }
+    
+    /**
+     * Constructor with output directory specification
+     * @param sparkSession An existing SparkSession
+     * @param datasetPath Path to the CSV dataset
+     * @param outputDir Directory to save results
+     */
+    public RandomForestAnalytics(SparkSession sparkSession, String datasetPath, String outputDir) {
+        this.spark = sparkSession;
+        this.datasetPath = datasetPath;
+        this.outputDir = outputDir;
+    }
+    
+    /**
+     * Main method to run the random forest analysis
+     * @return PipelineModel The trained model
+     */
+    public PipelineModel runAnalysis() {
         // Load dataset with header to infer schema automatically
         Dataset<Row> data = spark.read()
                 .option("header", "true") // Use first row as header
@@ -124,7 +144,7 @@ public class RandomForestAnalytics {
 
         pipelineStages.add(assembler);
 
-        // seplit the data to training and testing sets
+        // split the data to training and testing sets
         Dataset<Row>[] splits = data.randomSplit(new double[] { 0.8, 0.2 }, 1234);
         Dataset<Row> trainingData = splits[0];
         Dataset<Row> testData = splits[1];
@@ -164,8 +184,8 @@ public class RandomForestAnalytics {
                     .write()
                     .option("header", "true")
                     .mode("overwrite")
-                    .csv("output/predictions");
-            System.out.println("Saved predictions to output/predictions directory");
+                    .csv(outputDir + "/predictions");
+            System.out.println("Saved predictions to " + outputDir + "/predictions directory");
         } catch (Exception e) {
             System.err.println("Error saving predictions: " + e.getMessage());
         }
@@ -189,15 +209,14 @@ public class RandomForestAnalytics {
 
         // Save model performance metrics
         saveModelPerformance(predictions, evaluator, labelColumn);
-
-        // Stop the Spark session
-        spark.stop();
+        
+        return model;
     }
 
-    private static void saveTreesInformation(RandomForestRegressionModel model, String[] featureColumns) {
+    private void saveTreesInformation(RandomForestRegressionModel model, String[] featureColumns) {
         try {
             // Create directory if it doesn't exist
-            Files.createDirectories(Paths.get("output/trees"));
+            Files.createDirectories(Paths.get(outputDir + "/trees"));
 
             // Save the feature importances
             StringBuilder featureImportances = new StringBuilder();
@@ -209,29 +228,29 @@ public class RandomForestAnalytics {
                 String featureName = (i < featureColumns.length) ? featureColumns[i] : "Feature " + i;
                 featureImportances.append(featureName).append(": ").append(importances[i]).append("\n");
             }
-            Files.write(Paths.get("output/feature_importances.txt"), featureImportances.toString().getBytes());
+            Files.write(Paths.get(outputDir + "/feature_importances.txt"), featureImportances.toString().getBytes());
 
             // Save each tree's information
             for (int i = 0; i < model.getNumTrees(); i++) {
                 String treeInfo = model.trees()[i].toDebugString();
-                Files.write(Paths.get("output/trees/tree_" + i + ".txt"), treeInfo.getBytes());
+                Files.write(Paths.get(outputDir + "/trees/tree_" + i + ".txt"), treeInfo.getBytes());
             }
 
             // Save overall model information
             String modelInfo = model.toDebugString();
-            Files.write(Paths.get("output/model_info.txt"), modelInfo.getBytes());
+            Files.write(Paths.get(outputDir + "/model_info.txt"), modelInfo.getBytes());
 
-            System.out.println("Saved decision trees information to output/trees directory");
+            System.out.println("Saved decision trees information to " + outputDir + "/trees directory");
         } catch (IOException e) {
             System.err.println("Error saving tree information: " + e.getMessage());
         }
     }
 
-    private static void saveModelPerformance(Dataset<Row> predictions, RegressionEvaluator evaluator,
+    private void saveModelPerformance(Dataset<Row> predictions, RegressionEvaluator evaluator,
             String labelColumn) {
         try {
             // Create directory if it doesn't exist
-            Files.createDirectories(Paths.get("output"));
+            Files.createDirectories(Paths.get(outputDir));
 
             StringBuilder performanceMetrics = new StringBuilder();
 
@@ -301,11 +320,32 @@ public class RandomForestAnalytics {
             performanceMetrics.append("Absolute Mean Error: ").append(errorStatsRow.getDouble(4)).append("\n");
 
             // Save all performance metrics to a file
-            Files.write(Paths.get("output/model_performance.txt"), performanceMetrics.toString().getBytes());
-            System.out.println("Saved model performance metrics to output/model_performance.txt");
+            Files.write(Paths.get(outputDir + "/model_performance.txt"), performanceMetrics.toString().getBytes());
+            System.out.println("Saved model performance metrics to " + outputDir + "/model_performance.txt");
 
         } catch (IOException e) {
             System.err.println("Error saving model performance: " + e.getMessage());
         }
     }
+    
+    /**
+     * Example of how to use this class
+     */
+    // public static void main(String[] args) {
+    //     // Initialize Spark session
+    //     SparkSession spark = SparkSession.builder()
+    //             .appName("RandomForestExample")
+    //             .master("local[*]")
+    //             .getOrCreate();
+
+    //     // Path to your dataset - update this
+    //     String datasetPath = "/home/ismail/grpc-java-examples-master/insurance_v1.csv";
+        
+    //     // Create and run the analysis
+    //     RandomForestAnalytics analytics = new RandomForestAnalytics(spark, datasetPath);
+    //     PipelineModel model = analytics.runAnalysis();
+        
+    //     // Stop the Spark session
+    //     spark.stop();
+    // }
 }

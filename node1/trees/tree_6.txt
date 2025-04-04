@@ -1,0 +1,83 @@
+DecisionTreeRegressionModel: uid=dtr_d4b793a9162d, depth=5, numNodes=55, numFeatures=9
+  If (feature 2 <= 34.150000000000006)
+   If (feature 7 in {0.0})
+    If (feature 8 in {0.0,1.0,2.0,4.0})
+     If (feature 4 <= 1.5)
+      If (feature 1 <= 32.5)
+       Predict: 5896.124666666667
+      Else (feature 1 > 32.5)
+       Predict: 7515.627312252965
+     Else (feature 4 > 1.5)
+      If (feature 2 <= 33.05)
+       Predict: 8900.544244604314
+      Else (feature 2 > 33.05)
+       Predict: 15483.253043478253
+    Else (feature 8 not in {0.0,1.0,2.0,4.0})
+     If (feature 1 <= 23.5)
+      If (feature 0 <= 717234.5)
+       Predict: 13387.74625
+      Else (feature 0 > 717234.5)
+       Predict: 32108.659999999993
+     Else (feature 1 > 23.5)
+      If (feature 1 <= 44.5)
+       Predict: 10816.659322033896
+      Else (feature 1 > 44.5)
+       Predict: 13965.566874999997
+   Else (feature 7 not in {0.0})
+    If (feature 5 in {1.0})
+     If (feature 2 <= 28.95)
+      If (feature 0 <= 869573.0)
+       Predict: 21108.97893617021
+      Else (feature 0 > 869573.0)
+       Predict: 17765.21250000001
+     Else (feature 2 > 28.95)
+      If (feature 6 in {1.0})
+       Predict: 35320.16714285714
+      Else (feature 6 not in {1.0})
+       Predict: 39253.55428571429
+    Else (feature 5 not in {1.0})
+     If (feature 6 in {0.0})
+      If (feature 2 <= 29.95)
+       Predict: 20599.087199999998
+      Else (feature 2 > 29.95)
+       Predict: 40807.24615384615
+     Else (feature 6 not in {0.0})
+      If (feature 0 <= 583136.5)
+       Predict: 25535.75888888889
+      Else (feature 0 > 583136.5)
+       Predict: 36544.75687500001
+  Else (feature 2 > 34.150000000000006)
+   If (feature 5 in {1.0})
+    If (feature 7 in {0.0})
+     If (feature 1 <= 56.5)
+      If (feature 3 <= 104.5)
+       Predict: 7806.327125000002
+      Else (feature 3 > 104.5)
+       Predict: 18697.255000000005
+     Else (feature 1 > 56.5)
+      If (feature 2 <= 37.849999999999994)
+       Predict: 11975.266666666668
+      Else (feature 2 > 37.849999999999994)
+       Predict: 8901.298571428566
+    Else (feature 7 not in {0.0})
+     If (feature 8 in {0.0,2.0,3.0})
+      If (feature 8 in {2.0,3.0})
+       Predict: 41415.085
+      Else (feature 8 not in {2.0,3.0})
+       Predict: 45003.34375
+     Else (feature 8 not in {0.0,2.0,3.0})
+      Predict: 55135.40000000002
+   Else (feature 5 not in {1.0})
+    If (feature 1 <= 49.5)
+     If (feature 8 in {1.0,2.0,3.0})
+      If (feature 3 <= 111.5)
+       Predict: 15008.891630434786
+      Else (feature 3 > 111.5)
+       Predict: 42888.73666666666
+     Else (feature 8 not in {1.0,2.0,3.0})
+      If (feature 0 <= 837016.5)
+       Predict: 20678.430526315788
+      Else (feature 0 > 837016.5)
+       Predict: 34784.044999999984
+    Else (feature 1 > 49.5)
+     Predict: 44501.39999999991

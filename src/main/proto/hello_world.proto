@@ -43,3 +43,35 @@ message ResponseFrequentItems {
 string file_name = 1;
 bytes file_content = 2;
 }
+
+
+service DatasetAccess {
+  rpc remoteDataset (RequestDatasetAccess) returns (ResponseDatasetAccess) {}
+} 
+
+message RequestDatasetAccess{
+  string datasetPath = 1;
+  string datasetName = 2;
+  string outputPath = 3;
+}
+ 
+// The response message containing the greetings
+message ResponseDatasetAccess {
+bytes file_content = 1;
+bool isZippedFolder = 2;
+}
+
+service RandomForest {
+  rpc randomForestAnalytics (RequestRandomForest) returns (ResponseRandomForest) {}
+} 
+
+message RequestRandomForest{
+  string datasetPath = 1;
+  string datasetName = 2;
+  string outputPath = 3;
+}
+ 
+// The response message containing the greetings 
+message ResponseRandomForest {
+bytes file_content = 1;
+}
