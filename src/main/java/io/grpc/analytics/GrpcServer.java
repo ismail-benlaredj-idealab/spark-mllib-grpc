@@ -221,7 +221,7 @@ public class GrpcServer {
                     .appName("RandomForestExample")
                     .master("local[*]")
                     .getOrCreate();
-            RandomForestAnalytics analytics = new RandomForestAnalytics(spark, req.getDatasetPath());
+            RandomForestAnalytics analytics = new RandomForestAnalytics(spark, req.getDatasetPath(), req.getOutputPath());
             analytics.runAnalysis();
             spark.stop();
         }
