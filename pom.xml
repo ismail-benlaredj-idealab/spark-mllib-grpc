@@ -78,9 +78,9 @@ limitations under the License.
               <goal>compile</goal>
               <goal>compile-custom</goal> 
             </goals>  
-          </execution> 
+          </execution>  
         </executions>
       </plugin>
-    </plugins>  
+    </plugins>   
   </build>
 </project>

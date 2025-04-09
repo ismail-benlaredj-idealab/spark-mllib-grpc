@@ -75,3 +75,18 @@ message RequestRandomForest{
 message ResponseRandomForest {
 bytes file_content = 1;
 }
+
+service LinearRegression {
+  rpc linearRegressionAnalytics (RequestLinearRegression) returns (RequestLinearRegression) {}
+} 
+
+message RequestLinearRegression{
+  string datasetPath = 1;
+  string datasetName = 2;
+  string outputPath = 3;
+}
+ 
+// The response message containing the greetings 
+message ResponseLinearRegression {
+bytes file_content = 1;
+}

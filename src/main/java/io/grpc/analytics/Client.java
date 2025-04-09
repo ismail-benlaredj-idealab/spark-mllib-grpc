@@ -69,6 +69,8 @@ public class Client {
         } catch (StatusRuntimeException e) {
             logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
         }
+
+        
     }
 
     public void applyFpGrowth(String datasetName, String datasetPath, String outputPath) {

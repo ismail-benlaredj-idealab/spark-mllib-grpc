@@ -14,31 +14,42 @@ import org.apache.spark.sql.types.DataTypes;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 public class LinearRegressionAnalytics {
 
-        public static void main(String[] args) {
-                // Check if input arguments are provided
+        private final SparkSession sparkSession;
+        private final String datasetPath;
+        private final String outputDir;
 
-                String inputPath = "/home/ismail/grpc-java-examples-master/insurance_v1.csv";
-                String outputPath = "linear_regression_results";
+        /**
+         * Constructor for the LinearRegressionAnalytics class.
+         * 
+         * @param sparkSession The SparkSession to use for the analysis
+         * @param datasetPath  The path to the input dataset
+         * @param outputDir    The directory to save the output results
+         */
+        public LinearRegressionAnalytics(SparkSession sparkSession, String datasetPath, String outputDir) {
+                this.sparkSession = sparkSession;
+                this.datasetPath = datasetPath;
+                this.outputDir = outputDir;
+        }
 
-                // Initialize Spark session
-                SparkSession spark = SparkSession.builder()
-                                .appName("Linear Regression with Automatic Feature-Processing")
-                                .master("local[*]")
-                                .getOrCreate();
-
+        /**
+         * Run the linear regression analysis on the provided dataset.
+         * 
+         * @return A summary of the analysis results
+         * @throws Exception If an error occurs during analysis
+         */
+        public LinearRegressionResult runAnalysis() throws Exception {
                 try {
                         // Load the dataset
-                        Dataset<Row> data = spark.read()
+                        Dataset<Row> data = sparkSession.read()
                                         .option("header", "true")
                                         .option("inferSchema", "true")
-                                        .csv(inputPath);
+                                        .csv(datasetPath);
 
                         // Print dataset information
                         System.out.println("Dataset loaded with " + data.count() + " rows and " + data.columns().length
@@ -138,6 +149,7 @@ public class LinearRegressionAnalytics {
                                 cleanData = cleanData.na().fill(0.0, new String[] { col }); // Replace nulls with 0.0
                         }
                         data = cleanData;
+
                         // Split the data into training and test sets
                         Dataset<Row>[] splits = data.randomSplit(new double[] { 0.8, 0.2 }, 42);
                         Dataset<Row> trainingData = splits[0];
@@ -178,22 +190,24 @@ public class LinearRegressionAnalytics {
                                         DataTypes.createStructField("Value", DataTypes.DoubleType, false)
                         });
 
-                        Dataset<Row> resultsDf = spark.createDataFrame(resultRows, resultSchema);
+                        Dataset<Row> resultsDf = sparkSession.createDataFrame(resultRows, resultSchema);
 
                         System.out.println("Model Evaluation Metrics:");
                         resultsDf.show();
 
-                        System.out.println("Saving results to " + outputPath);
+                        System.out.println("Saving results to " + outputDir);
 
+                        // Save predictions
                         predictions.select(labelColumn, "prediction").coalesce(1).write()
                                         .option("header", "true")
                                         .mode("overwrite")
-                                        .csv(outputPath + "/predictions");
+                                        .csv(outputDir + "/predictions");
 
+                        // Save metrics
                         resultsDf.coalesce(1).write()
                                         .option("header", "true")
                                         .mode("overwrite")
-                                        .csv(outputPath + "/metrics");
+                                        .csv(outputDir + "/metrics");
 
                         // Save the feature importance information
                         double[] coefficients = lrModel.coefficients().toArray();
@@ -210,25 +224,71 @@ public class LinearRegressionAnalytics {
                                         DataTypes.createStructField("Coefficient", DataTypes.DoubleType, false)
                         });
 
-                        Dataset<Row> featureImportanceDf = spark.createDataFrame(featureImportanceRows,
+                        Dataset<Row> featureImportanceDf = sparkSession.createDataFrame(featureImportanceRows,
                                         featureImportanceSchema);
 
                         System.out.println("Feature Coefficients:");
                         featureImportanceDf.show();
 
+                        // Save feature importance
                         featureImportanceDf.coalesce(1).write()
                                         .option("header", "true")
                                         .mode("overwrite")
-                                        .csv(outputPath + "/feature_importance");
+                                        .csv(outputDir + "/feature_importance");
 
-                        System.out.println("Linear regression completed successfully. Results saved to " + outputPath);
+                        System.out.println("Linear regression completed successfully. Results saved to " + outputDir);
+
+                        // Return the results
+                        return new LinearRegressionResult(rmse, lrModel.summary().r2(),
+                                        lrModel.summary().meanAbsoluteError(), lrModel.summary().meanSquaredError());
 
                 } catch (Exception e) {
                         System.err.println("Error in Spark Linear Regression application: " + e.getMessage());
                         e.printStackTrace();
-                } finally {
-                        spark.stop();
+                        throw e;
                 }
         }
 
+        /**
+         * Class to hold the results of the linear regression analysis.
+         */
+        public static class LinearRegressionResult {
+                private final double rmse;
+                private final double r2;
+                private final double mae;
+                private final double mse;
+
+                public LinearRegressionResult(double rmse, double r2, double mae, double mse) {
+                        this.rmse = rmse;
+                        this.r2 = r2;
+                        this.mae = mae;
+                        this.mse = mse;
+                }
+
+                public double getRmse() {
+                        return rmse;
+                }
+
+                public double getR2() {
+                        return r2;
+                }
+
+                public double getMae() {
+                        return mae;
+                }
+
+                public double getMse() {
+                        return mse;
+                }
+
+                @Override
+                public String toString() {
+                        return "LinearRegressionResult{" +
+                                        "rmse=" + rmse +
+                                        ", r2=" + r2 +
+                                        ", mae=" + mae +
+                                        ", mse=" + mse +
+                                        '}';
+                }
+        }
 }

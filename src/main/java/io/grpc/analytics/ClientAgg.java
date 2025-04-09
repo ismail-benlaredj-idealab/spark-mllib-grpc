@@ -27,6 +27,7 @@ public class ClientAgg {
 
     private final ManagedChannel channel;
     private final DatasetAccessGrpc.DatasetAccessBlockingStub blockingStubFP;
+    private final LinearRegressionGrpc.LinearRegressionBlockingStub blockingStubLinearRegression;
 
     /** Construct client connecting to server at {@code host:port}. */
     public ClientAgg(String host, int port) {
@@ -34,6 +35,7 @@ public class ClientAgg {
                 .usePlaintext() // Note: For production, use proper authentication
                 .build();
         blockingStubFP = DatasetAccessGrpc.newBlockingStub(channel);
+        blockingStubLinearRegression = LinearRegressionGrpc.newBlockingStub(channel);
     }
 
     public void shutdown() throws InterruptedException {
@@ -42,10 +44,10 @@ public class ClientAgg {
 
     public void getRemoteDatasets(String datasetName, String datasetPath) {
         RequestDatasetAccess request = RequestDatasetAccess.newBuilder()
-        .setDatasetPath(datasetPath)
-        .setDatasetName(datasetName)
-        .setOutputPath("/home/ismail/grpc-java-examples-master/received_files")
-        .build();
+                .setDatasetPath(datasetPath)
+                .setDatasetName(datasetName)
+                .setOutputPath("/home/ismail/grpc-java-examples-master/received_files")
+                .build();
 
         try {
             // Ensure received_files directory exists
@@ -64,8 +66,10 @@ public class ClientAgg {
             }
 
             // Sanitize filename
-            // String sanitizedFileName = response.getNodeName() + "_" + response.getFileName();
-            // System.out.println(response.getFileName() + response.getNodeName().toString());
+            // String sanitizedFileName = response.getNodeName() + "_" +
+            // response.getFileName();
+            // System.out.println(response.getFileName() +
+            // response.getNodeName().toString());
             // Create output file
             File outputFile = new File(outputFolder, datasetName);
 
@@ -76,6 +80,23 @@ public class ClientAgg {
             } catch (IOException e) {
                 logger.log(Level.SEVERE, "Error writing file: " + e.getMessage(), e);
             }
+
+        } catch (StatusRuntimeException e) {
+            logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
+        }
+    }
+
+    public void applyLinearRegression(String datasetName, String datasetPath, String outputPath) {
+        RequestLinearRegression request = RequestLinearRegression.newBuilder()
+                .setDatasetPath(datasetPath)
+                .setDatasetName(datasetName)
+                .setOutputPath(outputPath)
+                .build();
+        try {
+            // Ensure received_files directory exists
+
+            RequestLinearRegression response = blockingStubLinearRegression.linearRegressionAnalytics(request);
+           
 
         } catch (StatusRuntimeException e) {
             logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
@@ -119,14 +140,12 @@ public class ClientAgg {
             }
         } else {
             ClientAgg ClientAgg = new ClientAgg("localhost", 50051);
-            ClientAgg.getRemoteDatasets("aaa", "insurance_v1.csv");
+            // ClientAgg.getRemoteDatasets("aaa", "insurance_v1.csv");
+            ClientAgg.applyLinearRegression("insurance_v1.csv", "insurance_v1.csv", "thisIsNewFolder");
+            System.out.println("done");
 
         }
     }
-
-
-
-    
 
     /*********************
      * UTILS
