@@ -22,26 +22,19 @@ public class FPgrowth implements Serializable {
     private String outputPath;
     private String datasetName;
 
-    /**
-     * Fully configurable constructor
-     * 
-     * @param datasetPath   Path to the input CSV file
-     * @param minSupport    Minimum support threshold for frequent itemsets
-     * @param numPartitions Number of partitions for distributed processing
-     * @param outputPath    Path to save frequent itemsets
-     */
+
+    
     public FPgrowth(
             SparkConf conf,
             String datasetPath,
             double minSupport,
             int numPartitions,
-            String outputPath,
-            String datasetName) {
+            String outputPath) {
         this.conf = conf;
         this.datasetPath = datasetPath;
         this.minSupport = minSupport;
         this.numPartitions = numPartitions;
-        this.outputPath = Paths.get(outputPath+"/"+System.getProperty("user.name")+"_"+datasetName.split("\\.")[0]+"_FP_Growth.dat").toAbsolutePath().toString();
+        this.outputPath =outputPath;
     }
 
     /**

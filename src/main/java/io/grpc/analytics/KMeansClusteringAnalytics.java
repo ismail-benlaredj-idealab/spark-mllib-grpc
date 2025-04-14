@@ -1,6 +1,5 @@
 package io.grpc.analytics;
 
-import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.mllib.clustering.KMeans;
@@ -55,9 +54,6 @@ public class KMeansClusteringAnalytics {
      * @throws IOException If an error occurs during analysis
      */
     public ClusteringResult runClustering() throws IOException {
-        String algorithm = "kmeans";
-
-        // Load and parse data
         JavaRDD<String> data = jsc.textFile(datasetPath);
 
         // First pass: identify categorical columns and their possible values
@@ -265,9 +261,8 @@ public class KMeansClusteringAnalytics {
         }
 
         // Write results to CSV file with complete data for analysis
-        // String outputFilePath = outputDir + "/" + algorithm + "_" + datasetName +
-        // ".csv";
-        String outputFilePath = outputDir + "/XXXXXXXXXXXX.csv";
+        String outputFilePath = outputDir + "/"+System.getProperty("user.name")+"_kmeans_" + datasetName +
+        ".csv";
         File outputFile = new File(outputFilePath);
         File outputDirectory = outputFile.getParentFile();
 

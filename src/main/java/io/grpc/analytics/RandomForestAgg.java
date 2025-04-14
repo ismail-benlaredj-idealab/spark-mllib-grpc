@@ -32,13 +32,13 @@ import java.util.Map;
 public class RandomForestAgg {
 
     private SparkSession spark;
-    private String[] nodeFolders;
+    private String[] nodesFolder;
     private String outputFolder;
     private String labelColumn;
     private boolean isClassification; // Flag to determine if this is classification or regression
 
-    public RandomForestAgg(String[] nodeFolders, String outputFolder, String labelColumn, boolean isClassification) {
-        this.nodeFolders = nodeFolders;
+    public RandomForestAgg(String[] nodesFolder, String outputFolder, String labelColumn, boolean isClassification) {
+        this.nodesFolder = nodesFolder;
         this.outputFolder = outputFolder;
         this.labelColumn = labelColumn;
         this.isClassification = isClassification;
@@ -58,12 +58,11 @@ public class RandomForestAgg {
         boolean isClassification = false;
         
         // Collect all node folders
-        String[] nodeFolders = new String[2];
-        nodeFolders[0] = "node1";
-        nodeFolders[1] = "node2";
+        String[] nodesFolder = getAllFolders("/path/to/your/directory");
 
 
-        RandomForestAgg combiner = new RandomForestAgg(nodeFolders, outputFolder, labelColumn, isClassification);
+
+        RandomForestAgg combiner = new RandomForestAgg(nodesFolder, outputFolder, labelColumn, isClassification);
         combiner.combineAllResults();
     }
 
@@ -108,8 +107,8 @@ public class RandomForestAgg {
         List<Dataset<Row>> allPredictions = new ArrayList<Dataset<Row>>();
         
         // Load predictions from each node
-        for (int i = 0; i < nodeFolders.length; i++) {
-            String nodeFolder = nodeFolders[i];
+        for (int i = 0; i < nodesFolder.length; i++) {
+            String nodeFolder = nodesFolder[i];
             String predictionsPath = nodeFolder + "/predictions";
             System.out.println("Loading predictions from node folder----------------------: " + predictionsPath);
             if (Files.exists(Paths.get(predictionsPath))) {
@@ -273,8 +272,8 @@ public class RandomForestAgg {
         //     metricValues.put("F1 Score", new ArrayList<Double>());
         // }
         
-        for (int i = 0; i < nodeFolders.length; i++) {
-            String nodeFolder = nodeFolders[i];
+        for (int i = 0; i < nodesFolder.length; i++) {
+            String nodeFolder = nodesFolder[i];
             Path metricsPath = Paths.get(nodeFolder + "/model_performance.txt");
             if (Files.exists(metricsPath)) {
                 String nodeName = Paths.get(nodeFolder).getFileName().toString();
@@ -348,8 +347,8 @@ public class RandomForestAgg {
     private void combineFeatureImportances() throws IOException {
         Map<String, List<Double>> featureImportances = new HashMap<String, List<Double>>();
         
-        for (int n = 0; n < nodeFolders.length; n++) {
-            String nodeFolder = nodeFolders[n];
+        for (int n = 0; n < nodesFolder.length; n++) {
+            String nodeFolder = nodesFolder[n];
             Path importancesPath = Paths.get(nodeFolder + "/feature_importances.txt");
             if (Files.exists(importancesPath)) {
                 List<String> lines = Files.readAllLines(importancesPath);
@@ -453,8 +452,8 @@ public class RandomForestAgg {
         // Aggregate key model parameters
         Map<String, List<String>> modelParams = new HashMap<>();
         
-        for (int i = 0; i < nodeFolders.length; i++) {
-            String nodeFolder = nodeFolders[i];
+        for (int i = 0; i < nodesFolder.length; i++) {
+            String nodeFolder = nodesFolder[i];
             Path infoPath = Paths.get(nodeFolder + "/model_info.txt");
             if (Files.exists(infoPath)) {
                 String nodeName = Paths.get(nodeFolder).getFileName().toString();
@@ -511,7 +510,7 @@ public class RandomForestAgg {
                 
                 modelInfo.append(entry.getKey()).append(": ").append(mostCommonValue)
                         .append(" (used in ").append(maxCount).append(" of ")
-                        .append(nodeFolders.length).append(" nodes)\n");
+                        .append(nodesFolder.length).append(" nodes)\n");
             }
         }
         
@@ -533,7 +532,7 @@ public class RandomForestAgg {
         List<String> allTreePaths = new ArrayList<>();
         
         // Find all tree models
-        for (String nodeFolder : nodeFolders) {
+        for (String nodeFolder : nodesFolder) {
             for (int i = 0; i < 10; i++) { // Looking for trees 0-9
                 String treePath = nodeFolder + "/trees/tree_" + i+".txt";
                 Path path = Paths.get(treePath);
@@ -546,7 +545,7 @@ public class RandomForestAgg {
         }
         
         treeInfo.append("Found ").append(totalTreesFound).append(" decision trees across ")
-                .append(nodeFolders.length).append(" nodes.\n\n");
+                .append(nodesFolder.length).append(" nodes.\n\n");
         
         if (totalTreesFound == 0) {
             treeInfo.append("No decision trees found to aggregate.\n");
@@ -638,5 +637,44 @@ public class RandomForestAgg {
             }
         });
     }
+
+
+    /**
+     * Utility method to get all folders in a directory
+     */
+    public static String[] getAllFolders(String directoryPath) {
+        File directory = new File(directoryPath);
+        
+        // Check if the directory exists
+        if (!directory.exists() || !directory.isDirectory()) {
+            System.err.println("Invalid directory path: " + directoryPath);
+            return new String[0];
+        }
+        
+        // Get all files and directories in the specified path
+        File[] files = directory.listFiles();
+        
+        if (files == null) {
+            System.err.println("Error reading directory contents: " + directoryPath);
+            return new String[0];
+        }
+        
+        // Count directories
+        List<String> folderNames = new ArrayList<>();
+        for (File file : files) {
+            if (file.isDirectory()) {
+                folderNames.add(file.getName());
+            }
+        }
+        
+        // Convert list to array
+        String[] nodesFolder = folderNames.toArray(new String[0]);
+        
+        System.out.println("Found " + nodesFolder.length + " folders in " + directoryPath);
+        return nodesFolder;
+    }
+
 }
+
+
 

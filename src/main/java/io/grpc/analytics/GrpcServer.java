@@ -16,24 +16,23 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.ivy.plugins.repository.ssh.Scp.FileInfo;
 import org.apache.spark.SparkConf;
-import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.ml.PipelineModel;
-import org.apache.spark.mllib.clustering.KMeans;
-import org.apache.spark.mllib.clustering.KMeansModel;
-import org.apache.spark.mllib.linalg.Vector;
-import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.sql.SparkSession;
 
 import com.google.protobuf.ByteString;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -49,7 +48,7 @@ public class GrpcServer {
     public GrpcServer(int port) throws IOException {
         this.port = port;
         server = NettyServerBuilder.forPort(port)
-                .addService(new GreeterImpl())
+                .addService(new ClustringAnalysis())
                 .addService(new FrequentItemsImpl())
                 .addService(new DatasetAccessImpl())
                 .addService(new RandomForestImpl())
@@ -80,115 +79,135 @@ public class GrpcServer {
         }
     }
 
-    private static class GreeterImpl extends GreeterGrpc.GreeterImplBase {
+    private static class ClustringAnalysis extends ClustringAnalysisGrpc.ClustringAnalysisImplBase {
         @Override
-        public void clustringKmeansServer(Request req, StreamObserver<Response> responseObserver) {
-            // try {
-            //     // Log start of processing
-            //     System.out.println(
-            //             "***************************** RUN CODE HERE *****************************************************");
-            //     long startTime = System.nanoTime();
-            //     // Perform clustering
-            //     clustringKmeans(req.getDatasetPath(), req.getDatasetName(), req.getAlgorithm());
-
-            //     // // Calculate execution time
-            //     // long endTime = System.nanoTime();
-            //     // double executionTimeInSeconds = (endTime - startTime) / 1_000_000_000.0;
-            //     // writeExecutionTimeToCSV("executionTime", executionTimeInSeconds);
-
-            //     // Prepare file to send
-            //     File fileToSend = new File(req.getAlgorithm() + "_" + req.getDatasetName() + ".csv");
-
-            //     // Validate file exists
-            //     if (!fileToSend.exists()) {
-            //         throw new FileNotFoundException("Output file not found: " + fileToSend.getAbsolutePath());
-            //     }
-
-            //     // Read entire file content
-            //     byte[] fileContent = java.nio.file.Files.readAllBytes(fileToSend.toPath());
-
-            //     // Create a single response with full file content
-            //     Response response = Response.newBuilder()
-            //             .setFileName(fileToSend.getName())
-            //             .setFileContent(com.google.protobuf.ByteString.copyFrom(fileContent))
-            //             .setNodeName(System.getProperty("user.name"))
-            //             .build();
-
-            //     // Send the response
-            //     responseObserver.onNext(response);
-            //     responseObserver.onCompleted();
-
-            // } catch (Exception e) {
-            //     // Handle any errors during processing
-            //     System.err.println("Error processing request: " + e.getMessage());
-            //     e.printStackTrace();
-
-            //     // Send error response
-            //     responseObserver.onError(Status.INTERNAL
-            //             .withDescription("Error processing file: " + e.getMessage())
-            //             .asRuntimeException());
-            // }
-
+        public void clustringKmeansServer(RequestClustringKmeans req,
+                StreamObserver<ResponseClustringKmeans> responseObserver) {
             SparkConf conf = new SparkConf()
-            .setAppName("KMeans Clustering Example")
-            .setMaster("local[*]");
-    JavaSparkContext jsc = new JavaSparkContext(conf);
-            
-    try {
-        // Define parameters should be passed from the client as request parameters
-        String datasetPath = "/home/ismail/grpc-java-examples-master/insurance_v1.csv";
-        String outputDir = "complete_cluster_assignments";
-        String datasetName = "insurance_v1";
-        int numClusters = 5;
-        int numIterations = 20;
-        
-        // Create and run the K-means clustering analysis
-        KMeansClusteringAnalytics analytics = new KMeansClusteringAnalytics(
-            jsc, datasetPath, outputDir, datasetName, numClusters, numIterations);
-            
-        KMeansClusteringAnalytics.ClusteringResult result = analytics.runClustering();
-        
-        // Print the results
-        System.out.println("Clustering completed with results:");
-        System.out.println(result);
-        System.out.println("Results saved to: " + result.getOutputFilePath());
-        
-    } catch (Exception e) {
-        System.err.println("Error running clustering: " + e.getMessage());
-        e.printStackTrace();
-    } finally {
-        jsc.stop();
-    }
+                    .setAppName("KMeans Clustering Example")
+                    .setMaster("local[*]");
+            JavaSparkContext jsc = new JavaSparkContext(conf);
+
+            try {
+                // Define parameters
+                String datasetsDirectory = req.getDatasetPath(); // Directory containing all datasets
+                String outputDir = req.getOutputPath();
+                int numClusters = 5;
+                int numIterations = 20;
+
+                // Create output directory if it doesn't exist
+                File outputDirFile = new File(outputDir);
+                if (!outputDirFile.exists()) {
+                    outputDirFile.mkdirs();
+                }
+
+                // Find all CSV files in the datasets directory
+                List<Path> datasetPaths = findCSVFiles(datasetsDirectory);
+
+                if (datasetPaths.isEmpty()) {
+                    System.out.println("No CSV datasets found in directory: " + datasetsDirectory);
+                    return;
+                }
+
+                System.out.println("Found " + datasetPaths.size() + " CSV datasets to process");
+                List<KMeansClusteringAnalytics.ClusteringResult> allResults = new ArrayList<>();
+                for (Path datasetPath : datasetPaths) {
+                    String fullPath = datasetPath.toString();
+                    String fileName = datasetPath.getFileName().toString();
+
+                    // Extract dataset name from filename (remove .csv extension)
+                    String datasetName = fileName;
+                    if (fileName.toLowerCase().endsWith(".csv")) {
+                        datasetName = fileName.substring(0, fileName.length() - 4);
+                    }
+
+                    System.out.println("***********========================================");
+                    System.out.println("Processing dataset: " + datasetName);
+
+                    try {
+                        // Create and run the K-means clustering analysis
+                        KMeansClusteringAnalytics analytics = new KMeansClusteringAnalytics(
+                                jsc, fullPath, outputDir, datasetName, numClusters, numIterations);
+
+                        KMeansClusteringAnalytics.ClusteringResult result = analytics.runClustering();
+                        allResults.add(result);
+                    } catch (Exception e) {
+                        System.err.println("Error processing dataset " + datasetName + ": " + e.getMessage());
+                        e.printStackTrace();
+                        // Continue with the next dataset
+                    }
+                }
+
+                System.out.println("Total datasets processed: " + allResults.size());
+
+            } catch (Exception e) {
+                System.err.println("Error in batch processing: " + e.getMessage());
+                e.printStackTrace();
+            } finally {
+                jsc.stop();
+            }
+
         }
     }
 
     private static class FrequentItemsImpl extends FrequentItemsGrpc.FrequentItemsImplBase {
         @Override
         public void ftGrowth(RequestFrequentItems req, StreamObserver<ResponseFrequentItems> responseObserver) {
-            System.out.println(req.getDatasetPath());
+           
             try {
                 SparkConf conf = new SparkConf().setAppName("ftGrowth").setMaster("local");
-                String datasetPath = req.getDatasetPath();
-                String datasetName = req.getDatasetName();
-                String outputPath = req.getOutputPath();
-                FPgrowth ftgrowth = new FPgrowth(conf, datasetPath, 0.05, 20,
-                        outputPath, datasetName);
-                ftgrowth.analyze();
-
-                File fileToSend = new File(outputPath + "/" + System.getProperty("user.name") + "_"
-                        + datasetName.split("\\.")[0] + "_FP_Growth.dat");
-                byte[] fileContent = java.nio.file.Files.readAllBytes(fileToSend.toPath());
-
-                ResponseFrequentItems response = ResponseFrequentItems.newBuilder()
-                        .setFileName(
-                                System.getProperty("user.name") + "_" + datasetName.split("\\.")[0] + "_FP_Growth.dat")
-                        .setFileContent(com.google.protobuf.ByteString.copyFrom(fileContent))
-                        .build();
-                responseObserver.onNext(response);
-                responseObserver.onCompleted();
+                String datasetsDirectory = req.getDatasetPath(); // Directory containing all datasets
+                String outputDir = req.getOutputPath();
+                double minSupport =0.05;
+                int minConfidence = 20;
+                
+                // Create output directory if it doesn't exist
+                File outputDirFile = new File(outputDir);
+                if (!outputDirFile.exists()) {
+                    outputDirFile.mkdirs();
+                }
+                
+                // Find all CSV files in the datasets directory
+                List<Path> datasetPaths = findCSVFiles(datasetsDirectory);
+                
+                System.out.println("Found " + datasetPaths.size() + " CSV datasets to process");
+                
+                // Process each dataset file
+                List<String> processedDatasets = new ArrayList<>();
+                List<String> failedDatasets = new ArrayList<>();
+                
+                for (Path datasetPath : datasetPaths) {
+                    String fullPath = datasetPath.toString();
+                    String fileName = datasetPath.getFileName().toString();
+                    
+                    // Extract dataset name from filename (remove .csv extension)
+                    String datasetName = fileName;
+                    if (fileName.toLowerCase().endsWith(".csv")) {
+                        datasetName = fileName.substring(0, fileName.length() - 4);
+                    }
+                    
+                    System.out.println("\nProcessing dataset: " + datasetName);
+                    
+                    try {
+                        // Create output path specific to this dataset
+                        String datasetOutputPath = outputDir + "/"+System.getProperty("user.name") +"_fpgrowth_"+ datasetName ;
+                        
+                        // Run FPgrowth analysis for this dataset
+                        FPgrowth ftgrowth = new FPgrowth(conf, fullPath, minSupport, minConfidence, datasetOutputPath);
+                        ftgrowth.analyze();
+                        
+                        processedDatasets.add(datasetName);
+                        
+                    } catch (Exception e) {
+                        System.err.println("Error processing dataset " + datasetName + ": " + e.getMessage());
+                        failedDatasets.add(datasetName);
+                        // Continue with the next dataset
+                    }
+                }
+                
             } catch (Exception e) {
                 responseObserver.onError(Status.INTERNAL
-                        .withDescription("Error processing file: " + e.getMessage())
+                        .withDescription("Error in batch processing: " + e.getMessage())
                         .asRuntimeException());
             }
         }
@@ -197,67 +216,123 @@ public class GrpcServer {
     private static class DatasetAccessImpl extends DatasetAccessGrpc.DatasetAccessImplBase {
         @Override
         public void remoteDataset(RequestDatasetAccess req, StreamObserver<ResponseDatasetAccess> responseObserver) {
-            String datasetName = req.getDatasetName(),
-                    datasetPath = req.getDatasetPath();
-
+            String folderPath = req.getFolderPath();
+    
             try {
-                File sourceFolder = new File(datasetPath + "/" + datasetName);
-
-                // Validate file/folder exists
-                if (!sourceFolder.exists()) {
-                    throw new FileNotFoundException("Dataset not found: " + sourceFolder.getAbsolutePath());
+                File folder = new File(folderPath);
+                
+                // Validate folder exists
+                if (!folder.exists() || !folder.isDirectory()) {
+                    throw new FileNotFoundException("Folder not found: " + folder.getAbsolutePath());
                 }
-
-                ByteString contentToSend;
-
-                if (sourceFolder.isDirectory()) {
-                    // If it's a directory, zip the contents
-                    contentToSend = zipFolder(sourceFolder);
-                    System.out.println("Zipped folder " + sourceFolder.getName() + " for transmission");
-                } else {
-                    // If it's a single file, just read the bytes
-                    contentToSend = ByteString.copyFrom(Files.readAllBytes(sourceFolder.toPath()));
-                    System.out.println("Read file " + sourceFolder.getName() + " for transmission");
+                
+                // Get all files in the directory
+                File[] files = folder.listFiles();
+                if (files == null || files.length == 0) {
+                    System.out.println("No files found in directory: " + folder.getAbsolutePath());
+                    
+                    // Send empty response
+                    ResponseDatasetAccess response = ResponseDatasetAccess.newBuilder().build();
+                    responseObserver.onNext(response);
+                    responseObserver.onCompleted();
+                    return;
                 }
-
-                // Create response with the content (either zipped folder or single file)
-                ResponseDatasetAccess response = ResponseDatasetAccess.newBuilder()
-                        .setFileContent(contentToSend)
-                        .setIsZippedFolder(sourceFolder.isDirectory())
-                        .build();
-
-                // Send the response
-                responseObserver.onNext(response);
+                
+                // Create builder for the response
+                ResponseDatasetAccess.Builder responseBuilder = ResponseDatasetAccess.newBuilder();
+                
+                // Add each file to the response
+                for (File file : files) {
+                    if (file.isFile()) {
+                        // Read file content
+                        ByteString fileContent = ByteString.copyFrom(Files.readAllBytes(file.toPath()));
+                        
+                        // Add file to response
+                        FileData fileData = FileData.newBuilder()
+                                .setFileName(file.getName())
+                                .setContent(fileContent)
+                                .build();
+                                
+                        responseBuilder.addFiles(fileData);
+                        System.out.println("Added file to response: " + file.getName());
+                    }
+                }
+                
+                // Send the response with all files
+                responseObserver.onNext(responseBuilder.build());
                 responseObserver.onCompleted();
-
-                System.out.println("Successfully sent " + sourceFolder.getName());
-
+                
+                System.out.println("Successfully sent " + files.length + " files from " + folder.getAbsolutePath());
+                
             } catch (Exception e) {
                 // Handle any errors during processing
                 System.err.println("Error processing request: " + e.getMessage());
                 e.printStackTrace();
-
+                
                 // Send error response
                 responseObserver.onError(Status.INTERNAL
-                        .withDescription("Error processing dataset: " + e.getMessage())
+                        .withDescription("Error processing folder contents: " + e.getMessage())
                         .asRuntimeException());
             }
         }
-
     }
 
     private static class RandomForestImpl extends RandomForestGrpc.RandomForestImplBase {
         @Override
         public void randomForestAnalytics(RequestRandomForest req,
                 StreamObserver<ResponseRandomForest> responseObserver) {
-            SparkSession spark = SparkSession.builder()
-                    .appName("RandomForestExample")
-                    .master("local[*]")
-                    .getOrCreate();
-            RandomForestAnalytics analytics = new RandomForestAnalytics(spark, req.getDatasetPath(),
-                    req.getOutputPath());
-            analytics.runAnalysis();
-            spark.stop();
+                    try {
+                        SparkSession spark = SparkSession.builder()
+                                .appName("BatchRandomForestAnalysis")
+                                .master("local[*]")
+                                .getOrCreate();
+                        
+                        String datasetsDirectory = req.getDatasetPath(); // Directory containing all datasets
+                        String outputDir = req.getOutputPath();
+                        
+                        // Create output directory if it doesn't exist
+                        File outputDirFile = new File(outputDir);
+                        if (!outputDirFile.exists()) {
+                            outputDirFile.mkdirs();
+                        }
+                        
+                        // Find all CSV files in the datasets directory
+                        List<Path> datasetPaths = findCSVFiles(datasetsDirectory);
+                        System.out.println("Found " + datasetPaths.size() + " CSV datasets to process");
+                        
+                        // Process each dataset file
+                        List<String> processedDatasets = new ArrayList<>();
+                        List<String> failedDatasets = new ArrayList<>();
+                        
+                        for (Path datasetPath : datasetPaths) {
+                            String fullPath = datasetPath.toString();
+                            String fileName = datasetPath.getFileName().toString();
+                            
+                            // Extract dataset name from filename (remove .csv extension)
+                            String datasetName = fileName;
+                            if (fileName.toLowerCase().endsWith(".csv")) {
+                                datasetName = fileName.substring(0, fileName.length() - 4);
+                            }
+                            
+                            System.out.println("\nProcessing dataset: " + datasetName);
+                            
+                            try {
+                                String datasetOutputPath = outputDir + "/"+System.getProperty("user.name") +"_rf_results_"+ datasetName;
+                                RandomForestAnalytics analytics = new RandomForestAnalytics(spark, fullPath, datasetOutputPath);
+                                analytics.runAnalysis();
+                                processedDatasets.add(datasetName);
+                            } catch (Exception e) {
+                                System.err.println("Error processing dataset " + datasetName + ": " + e.getMessage());
+                                failedDatasets.add(datasetName);
+                            }
+                        }
+                        spark.stop();
+                        
+                    } catch (Exception e) {
+                        responseObserver.onError(Status.INTERNAL
+                                .withDescription("Error in batch processing: " + e.getMessage())
+                                .asRuntimeException());
+                    }
         }
     }
 
@@ -265,27 +340,78 @@ public class GrpcServer {
         @Override
         public void linearRegressionAnalytics(RequestLinearRegression req,
                 StreamObserver<RequestLinearRegression> responseObserver) {
-            SparkSession spark = SparkSession.builder()
-                    .appName("Linear Regression Example")
+                    SparkSession spark = SparkSession.builder()
+                    .appName("Batch Linear Regression Analysis")
                     .master("local[*]")
                     .getOrCreate();
+                    
             try {
-                // Define paths
-                String datasetPath =  req.getDatasetPath();
-                String outputDir =   req.getOutputPath();
-
-                // Create and run the linear regression analysis
-                LinearRegressionAnalytics analytics = new LinearRegressionAnalytics(spark, datasetPath, outputDir);
-                LinearRegressionAnalytics.LinearRegressionResult result = analytics.runAnalysis();
-
-                // Print the results
-                System.out.println("Analysis completed with results:");
-                System.out.println(result);
-
+                String datasetsDirectory = req.getDatasetPath(); // Directory containing all datasets
+                String outputDir = req.getOutputPath();
+                
+                // Create output directory if it doesn't exist
+                File outputDirFile = new File(outputDir);
+                if (!outputDirFile.exists()) {
+                    outputDirFile.mkdirs();
+                }
+                List<Path> datasetPaths = findCSVFiles(datasetsDirectory);
+                System.out.println("Found " + datasetPaths.size() + " CSV datasets to process");
+                List<String> processedDatasets = new ArrayList<>();
+                List<String> failedDatasets = new ArrayList<>();
+                
+                for (Path datasetPath : datasetPaths) {
+                    String fullPath = datasetPath.toString();
+                    String fileName = datasetPath.getFileName().toString();
+                    
+                    // Extract dataset name from filename (remove .csv extension)
+                    String datasetName = fileName;
+                    if (fileName.toLowerCase().endsWith(".csv")) {
+                        datasetName = fileName.substring(0, fileName.length() - 4);
+                    }
+                    
+                    System.out.println("\nProcessing dataset: " + datasetName);
+                    
+                    try {
+                        // Create output path specific to this dataset
+                        String datasetOutputPath = outputDir + "/" + datasetName + "_linreg_results";
+                        
+                        // Run Linear Regression analysis for this dataset
+                        LinearRegressionAnalytics analytics = new LinearRegressionAnalytics(spark, fullPath, datasetOutputPath);
+                        LinearRegressionAnalytics.LinearRegressionResult result = analytics.runAnalysis();
+                        
+                        // Print the results
+                        System.out.println("Results for dataset " + datasetName + ":");
+                        System.out.println(result);
+                        
+                        processedDatasets.add(datasetName);
+                        
+                    } catch (Exception e) {
+                        System.err.println("Error processing dataset " + datasetName + ": " + e.getMessage());
+                        failedDatasets.add(datasetName);
+                        // Continue with the next dataset
+                    }
+                }
+                
+                // Build response with summary
+                StringBuilder resultMessage = new StringBuilder();
+                resultMessage.append("Batch Linear Regression processing complete.\n");
+                resultMessage.append("Total datasets: ").append(datasetPaths.size()).append("\n");
+                resultMessage.append("Successfully processed: ").append(processedDatasets.size()).append("\n");
+                resultMessage.append("Failed: ").append(failedDatasets.size()).append("\n\n");
+                
+                if (!failedDatasets.isEmpty()) {
+                    resultMessage.append("Failed datasets: ").append(String.join(", ", failedDatasets));
+                }
+   
+                
             } catch (Exception e) {
-                System.err.println("Error running analytics: " + e.getMessage());
+                System.err.println("Error running batch analytics: " + e.getMessage());
                 e.printStackTrace();
+                responseObserver.onError(Status.INTERNAL
+                        .withDescription("Error processing datasets: " + e.getMessage())
+                        .asRuntimeException());
             } finally {
+                // Stop Spark session after batch processing
                 spark.stop();
             }
         }
@@ -336,14 +462,6 @@ public class GrpcServer {
         } catch (IOException e) {
             e.printStackTrace();
         }
-    }
-
-    /****************************************************************************
-     * k means
-     */
-    private static void clustringKmeans(String datasetPath, String datasetName, String algorithm) {
-        // Create Spark configuration and context
-      
     }
 
     private static ByteString zipFolder(File folderToZip) throws Exception {
@@ -398,6 +516,15 @@ public class GrpcServer {
             // Close resources
             zos.closeEntry();
             fis.close();
+        }
+    }
+
+    private static List<Path> findCSVFiles(String directory) throws Exception {
+        try (Stream<Path> paths = Files.walk(Paths.get(directory))) {
+            return paths
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.toString().toLowerCase().endsWith(".csv"))
+                    .collect(Collectors.toList());
         }
     }
 }
