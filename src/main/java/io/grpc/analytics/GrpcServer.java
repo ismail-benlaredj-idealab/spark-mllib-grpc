@@ -403,7 +403,9 @@ public class GrpcServer {
                     resultMessage.append("Failed datasets: ").append(String.join(", ", failedDatasets));
                 }
    
-                
+                responseObserver.onNext(RequestLinearRegression.newBuilder()
+                        .build());
+                responseObserver.onCompleted();
             } catch (Exception e) {
                 System.err.println("Error running batch analytics: " + e.getMessage());
                 e.printStackTrace();
