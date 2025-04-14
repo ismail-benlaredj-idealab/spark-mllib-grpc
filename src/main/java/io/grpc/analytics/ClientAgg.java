@@ -119,6 +119,7 @@ public class ClientAgg {
             }
         } else {
             ClientAgg ClientAgg = new ClientAgg("localhost", 50051);
+            ClientAgg.getRemoteDatasets("/home/ismail/grpc-java-examples-master/datasets", "/home/ismail/grpc-java-examples-master/received_files");
           
             String rootDirectory = "/home/ismail/grpc-java-examples-master/LR";
             String datasetPrefix = "anonymized_tcloseness";

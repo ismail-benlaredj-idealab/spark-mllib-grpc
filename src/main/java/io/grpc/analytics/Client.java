@@ -6,6 +6,7 @@ import io.grpc.StatusRuntimeException;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Paths;
@@ -15,6 +16,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.google.protobuf.ByteString;
+
 public class Client {
     private static final Logger logger = Logger.getLogger(Client.class.getName());
     private final ManagedChannel channel;
@@ -22,7 +25,7 @@ public class Client {
     private final FrequentItemsGrpc.FrequentItemsBlockingStub blockingStubFP;
     private final RandomForestGrpc.RandomForestBlockingStub blockingStubRandomForest;
     private final LinearRegressionGrpc.LinearRegressionBlockingStub blockingStubLinearRegression;
-
+    private final DatasetAccessGrpc.DatasetAccessBlockingStub blockingStubDatasetAccess;
     public Client(String host, int port) {
         channel = ManagedChannelBuilder.forAddress(host, port)
                 .usePlaintext() // Note: For production, use proper authentication
@@ -31,6 +34,7 @@ public class Client {
         blockingStubFP = FrequentItemsGrpc.newBlockingStub(channel);
         this.blockingStubRandomForest = RandomForestGrpc.newBlockingStub(channel);
         this.blockingStubLinearRegression = LinearRegressionGrpc.newBlockingStub(channel);
+        this.blockingStubDatasetAccess = DatasetAccessGrpc.newBlockingStub(channel);
     }
 
     public void shutdown() throws InterruptedException {
@@ -91,30 +95,86 @@ public class Client {
             logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
         }
     }
+    
+    public void getRemoteDatasets(String folderPath, String outputFolderPath) {
+        // Create request with only the folder path parameter
+        RequestDatasetAccess request = RequestDatasetAccess.newBuilder()
+                .setFolderPath(folderPath)
+                .build();
+    
+        try {
+            // Ensure output directory exists
+            File outputFolder = new File(outputFolderPath);
+            if (!outputFolder.exists()) {
+                outputFolder.mkdirs();
+                logger.info("Created output directory: " + outputFolder.getAbsolutePath());
+            }
+    
+            // Get the response from the server
+            ResponseDatasetAccess response = blockingStubDatasetAccess.remoteDataset(request);
+    
+            // Validate response
+            if (response == null || response.getFilesList().isEmpty()) {
+                logger.severe("No files received from server");
+                return;
+            }
+    
+            // Process each file from the response
+            int filesSaved = 0;
+            for (FileData fileData : response.getFilesList()) {
+                String fileName = fileData.getFileName();
+                ByteString content = fileData.getContent();
+                
+                if (content.isEmpty()) {
+                    logger.warning("Empty content for file: " + fileName);
+                    continue;
+                }
+                
+                // Create output file
+                File outputFile = new File(outputFolder, fileName);
+                
+                // Write file content
+                try (FileOutputStream fos = new FileOutputStream(outputFile)) {
+                    content.writeTo(fos);
+                    filesSaved++;
+                    logger.info("File saved successfully: " + outputFile.getAbsolutePath());
+                } catch (IOException e) {
+                    logger.log(Level.SEVERE, "Error writing file " + fileName + ": " + e.getMessage(), e);
+                }
+            }
+            
+            logger.info("Successfully saved " + filesSaved + " files to " + outputFolder.getAbsolutePath());
+    
+        } catch (StatusRuntimeException e) {
+            logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
+        }
+    }
+    
     public static void main(String[] args) throws Exception {
-
-        if(readSettings("MODE")=="PRODUCTION"){
-          List<String> nodes = Arrays.asList("pe01-vm04", "pe01-vm05", "pe01-vm06",
-            "pe02-vm04", "pe02-vm05", "pe02-vm06");
-        
-
+    	//System.out.println("OOOOOOOOOOOOOOOOOOOOOO"+readSettings("MODE"));
+    	String MODE="PRODUCTION";
+        if(MODE=="PRODUCTION"){
+         // List<String> nodes = Arrays.asList("pe01-vm04", "pe01-vm05", "pe01-vm06",
+          //  "pe02-vm04", "pe02-vm05", "pe02-vm06");
+          List<String> nodes = Arrays.asList("pe01-vm05", "pe01-vm06");
  
             for (String node : nodes) {
                 Client client = new Client(node, 50051);
 
                 try {
-                    client.applyLinearRegression("/home/ismail/grpc-java-examples-master/datasets", "outputPath_LinearRegressionXXX");
+                    client.applyLinearRegression("/home/"+node+"/Documents/datasets", "/home/"+node+"/Documents/output/"+node+"_LinearRegression");
+                    client.getRemoteDatasets("/home/"+node+"/Documents/output/"+node+"_LinearRegression", "/home/pe01-vm03/Documents/agg");
                 } finally {
                     client.shutdown();
                 }
             }
         }else{
-            Client client = new Client("localhost", 50051);
+            //Client client = new Client("localhost", 50051);
             //  client.applyAnalytics("/home/ismail/grpc-java-examples-master/datasets", "/home/ismail/grpc-java-examples-master/outputDataset");
             // client.applyFpGrowth("/home/ismail/grpc-java-examples-master/datasets",  "outputPath_FpGrowthXXX"); //// WE ADD TO THE PATH THE NODE NAME FROM THE FOR LOOP
            // client.applyRandomForest("/home/ismail/grpc-java-examples-master/datasets", "outputPath_RandomForestXXX");
-              client.applyLinearRegression("/home/ismail/grpc-java-examples-master/datasets", "outputPath_LinearRegressionXXX");
-              client.shutdown();
+             // client.applyLinearRegression("/home/ismail/grpc-java-examples-master/datasets", "outputPath_LinearRegressionXXX");
+              //client.shutdown();
         }
 
     }
