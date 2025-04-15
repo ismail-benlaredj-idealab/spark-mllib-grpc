@@ -32,15 +32,17 @@ import org.apache.spark.sql.SparkSession;
 import com.google.protobuf.ByteString;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Server that manages startup/shutdown of a {@code Greeter} server.
- */
+
 public class GrpcServer {
     private static final Logger logger = Logger.getLogger(GrpcServer.class.getName());
-
+    private static final Set<String> ALLOWED_EXTENSIONS = new HashSet<>(Arrays.asList(
+            "csv", "bat", "txt"));
     /* The port on which the server should run */
     private final int port;
     private final Server server;
@@ -153,58 +155,59 @@ public class GrpcServer {
     private static class FrequentItemsImpl extends FrequentItemsGrpc.FrequentItemsImplBase {
         @Override
         public void ftGrowth(RequestFrequentItems req, StreamObserver<ResponseFrequentItems> responseObserver) {
-           
+
             try {
                 SparkConf conf = new SparkConf().setAppName("ftGrowth").setMaster("local");
                 String datasetsDirectory = req.getDatasetPath(); // Directory containing all datasets
                 String outputDir = req.getOutputPath();
-                double minSupport =0.05;
+                double minSupport = 0.05;
                 int minConfidence = 20;
-                
+
                 // Create output directory if it doesn't exist
                 File outputDirFile = new File(outputDir);
                 if (!outputDirFile.exists()) {
                     outputDirFile.mkdirs();
                 }
-                
+
                 // Find all CSV files in the datasets directory
                 List<Path> datasetPaths = findCSVFiles(datasetsDirectory);
-                
+
                 System.out.println("Found " + datasetPaths.size() + " CSV datasets to process");
-                
+
                 // Process each dataset file
                 List<String> processedDatasets = new ArrayList<>();
                 List<String> failedDatasets = new ArrayList<>();
-                
+
                 for (Path datasetPath : datasetPaths) {
                     String fullPath = datasetPath.toString();
                     String fileName = datasetPath.getFileName().toString();
-                    
+
                     // Extract dataset name from filename (remove .csv extension)
                     String datasetName = fileName;
                     if (fileName.toLowerCase().endsWith(".csv")) {
                         datasetName = fileName.substring(0, fileName.length() - 4);
                     }
-                    
+
                     System.out.println("\nProcessing dataset: " + datasetName);
-                    
+
                     try {
                         // Create output path specific to this dataset
-                        String datasetOutputPath = outputDir + "/"+System.getProperty("user.name") +"_fpgrowth_"+ datasetName ;
-                        
+                        String datasetOutputPath = outputDir + "/" + System.getProperty("user.name") + "_fpgrowth_"
+                                + datasetName;
+
                         // Run FPgrowth analysis for this dataset
                         FPgrowth ftgrowth = new FPgrowth(conf, fullPath, minSupport, minConfidence, datasetOutputPath);
                         ftgrowth.analyze();
-                        
+
                         processedDatasets.add(datasetName);
-                        
+
                     } catch (Exception e) {
                         System.err.println("Error processing dataset " + datasetName + ": " + e.getMessage());
                         failedDatasets.add(datasetName);
                         // Continue with the next dataset
                     }
                 }
-                
+
             } catch (Exception e) {
                 responseObserver.onError(Status.INTERNAL
                         .withDescription("Error in batch processing: " + e.getMessage())
@@ -216,62 +219,44 @@ public class GrpcServer {
     private static class DatasetAccessImpl extends DatasetAccessGrpc.DatasetAccessImplBase {
         @Override
         public void remoteDataset(RequestDatasetAccess req, StreamObserver<ResponseDatasetAccess> responseObserver) {
-            String folderPath = req.getFolderPath();
-    
+            String path = req.getFolderPath();
+
             try {
-                File folder = new File(folderPath);
-                
-                // Validate folder exists
-                if (!folder.exists() || !folder.isDirectory()) {
-                    throw new FileNotFoundException("Folder not found: " + folder.getAbsolutePath());
+                File source = new File(path);
+
+                // Validate path exists
+                if (!source.exists()) {
+                    throw new FileNotFoundException("Path not found: " + source.getAbsolutePath());
                 }
-                
-                // Get all files in the directory
-                File[] files = folder.listFiles();
-                if (files == null || files.length == 0) {
-                    System.out.println("No files found in directory: " + folder.getAbsolutePath());
-                    
-                    // Send empty response
-                    ResponseDatasetAccess response = ResponseDatasetAccess.newBuilder().build();
-                    responseObserver.onNext(response);
-                    responseObserver.onCompleted();
-                    return;
-                }
-                
+
                 // Create builder for the response
                 ResponseDatasetAccess.Builder responseBuilder = ResponseDatasetAccess.newBuilder();
-                
-                // Add each file to the response
-                for (File file : files) {
-                    if (file.isFile()) {
-                        // Read file content
-                        ByteString fileContent = ByteString.copyFrom(Files.readAllBytes(file.toPath()));
-                        
-                        // Add file to response
-                        FileData fileData = FileData.newBuilder()
-                                .setFileName(file.getName())
-                                .setContent(fileContent)
-                                .build();
-                                
-                        responseBuilder.addFiles(fileData);
-                        System.out.println("Added file to response: " + file.getName());
+
+                if (source.isFile()) {
+                    // Process single file if it has an allowed extension
+                    if (hasAllowedExtension(source.getName())) {
+                        processFile(source, "", responseBuilder);
+                    } else {
+                        System.out.println("Skipped file with unsupported extension: " + source.getName());
                     }
+                } else if (source.isDirectory()) {
+                    // Process directory and its contents recursively
+                    processDirectory(source, "", responseBuilder);
                 }
-                
+
                 // Send the response with all files
-                responseObserver.onNext(responseBuilder.build());
+                ResponseDatasetAccess response = responseBuilder.build();
+                responseObserver.onNext(response);
                 responseObserver.onCompleted();
-                
-                System.out.println("Successfully sent " + files.length + " files from " + folder.getAbsolutePath());
-                
+
             } catch (Exception e) {
                 // Handle any errors during processing
                 System.err.println("Error processing request: " + e.getMessage());
                 e.printStackTrace();
-                
+
                 // Send error response
                 responseObserver.onError(Status.INTERNAL
-                        .withDescription("Error processing folder contents: " + e.getMessage())
+                        .withDescription("Error processing path contents: " + e.getMessage())
                         .asRuntimeException());
             }
         }
@@ -281,58 +266,59 @@ public class GrpcServer {
         @Override
         public void randomForestAnalytics(RequestRandomForest req,
                 StreamObserver<ResponseRandomForest> responseObserver) {
-                    try {
-                        SparkSession spark = SparkSession.builder()
-                                .appName("BatchRandomForestAnalysis")
-                                .master("local[*]")
-                                .getOrCreate();
-                        
-                        String datasetsDirectory = req.getDatasetPath(); // Directory containing all datasets
-                        String outputDir = req.getOutputPath();
-                        
-                        // Create output directory if it doesn't exist
-                        File outputDirFile = new File(outputDir);
-                        if (!outputDirFile.exists()) {
-                            outputDirFile.mkdirs();
-                        }
-                        
-                        // Find all CSV files in the datasets directory
-                        List<Path> datasetPaths = findCSVFiles(datasetsDirectory);
-                        System.out.println("Found " + datasetPaths.size() + " CSV datasets to process");
-                        
-                        // Process each dataset file
-                        List<String> processedDatasets = new ArrayList<>();
-                        List<String> failedDatasets = new ArrayList<>();
-                        
-                        for (Path datasetPath : datasetPaths) {
-                            String fullPath = datasetPath.toString();
-                            String fileName = datasetPath.getFileName().toString();
-                            
-                            // Extract dataset name from filename (remove .csv extension)
-                            String datasetName = fileName;
-                            if (fileName.toLowerCase().endsWith(".csv")) {
-                                datasetName = fileName.substring(0, fileName.length() - 4);
-                            }
-                            
-                            System.out.println("\nProcessing dataset: " + datasetName);
-                            
-                            try {
-                                String datasetOutputPath = outputDir + "/"+System.getProperty("user.name") +"_rf_results_"+ datasetName;
-                                RandomForestAnalytics analytics = new RandomForestAnalytics(spark, fullPath, datasetOutputPath);
-                                analytics.runAnalysis();
-                                processedDatasets.add(datasetName);
-                            } catch (Exception e) {
-                                System.err.println("Error processing dataset " + datasetName + ": " + e.getMessage());
-                                failedDatasets.add(datasetName);
-                            }
-                        }
-                        spark.stop();
-                        
-                    } catch (Exception e) {
-                        responseObserver.onError(Status.INTERNAL
-                                .withDescription("Error in batch processing: " + e.getMessage())
-                                .asRuntimeException());
+            try {
+                SparkSession spark = SparkSession.builder()
+                        .appName("BatchRandomForestAnalysis")
+                        .master("local[*]")
+                        .getOrCreate();
+
+                String datasetsDirectory = req.getDatasetPath(); // Directory containing all datasets
+                String outputDir = req.getOutputPath();
+
+                // Create output directory if it doesn't exist
+                File outputDirFile = new File(outputDir);
+                if (!outputDirFile.exists()) {
+                    outputDirFile.mkdirs();
+                }
+
+                // Find all CSV files in the datasets directory
+                List<Path> datasetPaths = findCSVFiles(datasetsDirectory);
+                System.out.println("Found " + datasetPaths.size() + " CSV datasets to process");
+
+                // Process each dataset file
+                List<String> processedDatasets = new ArrayList<>();
+                List<String> failedDatasets = new ArrayList<>();
+
+                for (Path datasetPath : datasetPaths) {
+                    String fullPath = datasetPath.toString();
+                    String fileName = datasetPath.getFileName().toString();
+
+                    // Extract dataset name from filename (remove .csv extension)
+                    String datasetName = fileName;
+                    if (fileName.toLowerCase().endsWith(".csv")) {
+                        datasetName = fileName.substring(0, fileName.length() - 4);
                     }
+
+                    System.out.println("\nProcessing dataset: " + datasetName);
+
+                    try {
+                        String datasetOutputPath = outputDir + "/" + System.getProperty("user.name") + "_rf_results_"
+                                + datasetName;
+                        RandomForestAnalytics analytics = new RandomForestAnalytics(spark, fullPath, datasetOutputPath);
+                        analytics.runAnalysis();
+                        processedDatasets.add(datasetName);
+                    } catch (Exception e) {
+                        System.err.println("Error processing dataset " + datasetName + ": " + e.getMessage());
+                        failedDatasets.add(datasetName);
+                    }
+                }
+                spark.stop();
+
+            } catch (Exception e) {
+                responseObserver.onError(Status.INTERNAL
+                        .withDescription("Error in batch processing: " + e.getMessage())
+                        .asRuntimeException());
+            }
         }
     }
 
@@ -340,15 +326,15 @@ public class GrpcServer {
         @Override
         public void linearRegressionAnalytics(RequestLinearRegression req,
                 StreamObserver<RequestLinearRegression> responseObserver) {
-                    SparkSession spark = SparkSession.builder()
+            SparkSession spark = SparkSession.builder()
                     .appName("Batch Linear Regression Analysis")
                     .master("local[*]")
                     .getOrCreate();
-                    
+
             try {
                 String datasetsDirectory = req.getDatasetPath(); // Directory containing all datasets
                 String outputDir = req.getOutputPath();
-                
+
                 // Create output directory if it doesn't exist
                 File outputDirFile = new File(outputDir);
                 if (!outputDirFile.exists()) {
@@ -358,51 +344,52 @@ public class GrpcServer {
                 System.out.println("Found " + datasetPaths.size() + " CSV datasets to process");
                 List<String> processedDatasets = new ArrayList<>();
                 List<String> failedDatasets = new ArrayList<>();
-                
+
                 for (Path datasetPath : datasetPaths) {
                     String fullPath = datasetPath.toString();
                     String fileName = datasetPath.getFileName().toString();
-                    
+
                     // Extract dataset name from filename (remove .csv extension)
                     String datasetName = fileName;
                     if (fileName.toLowerCase().endsWith(".csv")) {
                         datasetName = fileName.substring(0, fileName.length() - 4);
                     }
-                    
+
                     System.out.println("\nProcessing dataset: " + datasetName);
-                    
+
                     try {
                         // Create output path specific to this dataset
                         String datasetOutputPath = outputDir + "/" + datasetName + "_linreg_results";
-                        
+
                         // Run Linear Regression analysis for this dataset
-                        LinearRegressionAnalytics analytics = new LinearRegressionAnalytics(spark, fullPath, datasetOutputPath);
+                        LinearRegressionAnalytics analytics = new LinearRegressionAnalytics(spark, fullPath,
+                                datasetOutputPath);
                         LinearRegressionAnalytics.LinearRegressionResult result = analytics.runAnalysis();
-                        
+
                         // Print the results
                         System.out.println("Results for dataset " + datasetName + ":");
                         System.out.println(result);
-                        
+
                         processedDatasets.add(datasetName);
-                        
+
                     } catch (Exception e) {
                         System.err.println("Error processing dataset " + datasetName + ": " + e.getMessage());
                         failedDatasets.add(datasetName);
                         // Continue with the next dataset
                     }
                 }
-                
+
                 // Build response with summary
                 StringBuilder resultMessage = new StringBuilder();
                 resultMessage.append("Batch Linear Regression processing complete.\n");
                 resultMessage.append("Total datasets: ").append(datasetPaths.size()).append("\n");
                 resultMessage.append("Successfully processed: ").append(processedDatasets.size()).append("\n");
                 resultMessage.append("Failed: ").append(failedDatasets.size()).append("\n\n");
-                
+
                 if (!failedDatasets.isEmpty()) {
                     resultMessage.append("Failed datasets: ").append(String.join(", ", failedDatasets));
                 }
-   
+
                 responseObserver.onNext(RequestLinearRegression.newBuilder()
                         .build());
                 responseObserver.onCompleted();
@@ -466,61 +453,6 @@ public class GrpcServer {
         }
     }
 
-    private static ByteString zipFolder(File folderToZip) throws Exception {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ZipOutputStream zos = new ZipOutputStream(baos);
-
-        // Get folder path for creating relative paths in zip
-        String folderPath = folderToZip.getAbsolutePath();
-
-        System.out.println("Creating zip from folder: " + folderPath);
-
-        // Recursively add folder contents to zip
-        addFolderToZip(folderToZip, folderToZip.getName(), zos);
-
-        // Close the zip stream
-        zos.close();
-
-        // Convert to ByteString
-        return ByteString.copyFrom(baos.toByteArray());
-    }
-
-    private static void addFolderToZip(File file, String entryPath, ZipOutputStream zos) throws Exception {
-        if (file.isDirectory()) {
-            // For directories, recursively process all contents
-            File[] files = file.listFiles();
-
-            // First, add this directory entry
-            zos.putNextEntry(new ZipEntry(entryPath + "/"));
-            zos.closeEntry();
-
-            if (files != null) {
-                for (File childFile : files) {
-                    // Recursive call with updated entry path
-                    addFolderToZip(childFile, entryPath + "/" + childFile.getName(), zos);
-                }
-            }
-        } else {
-            // For files, add file content to zip
-            FileInputStream fis = new FileInputStream(file);
-
-            // Create a new entry in the zip
-            ZipEntry zipEntry = new ZipEntry(entryPath);
-            zos.putNextEntry(zipEntry);
-
-            // Write file content to zip
-            byte[] buffer = new byte[1024];
-            int length;
-            while ((length = fis.read(buffer)) > 0) {
-                zos.write(buffer, 0, length);
-            }
-
-            // Close resources
-            zos.closeEntry();
-            fis.close();
-        }
-    }
-
     private static List<Path> findCSVFiles(String directory) throws Exception {
         try (Stream<Path> paths = Files.walk(Paths.get(directory))) {
             return paths
@@ -529,4 +461,68 @@ public class GrpcServer {
                     .collect(Collectors.toList());
         }
     }
+
+    private static boolean hasAllowedExtension(String fileName) {
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex > 0 && dotIndex < fileName.length() - 1) {
+            String extension = fileName.substring(dotIndex + 1).toLowerCase();
+            return ALLOWED_EXTENSIONS.contains(extension);
+        }
+        return false;
+    }
+
+    /**
+     * Recursively processes a directory and all its contents
+     */
+    private static void processDirectory(File directory, String relativePath,
+            ResponseDatasetAccess.Builder responseBuilder) throws IOException {
+        File[] files = directory.listFiles();
+        if (files == null || files.length == 0) {
+            System.out.println("No files found in directory: " + directory.getAbsolutePath());
+            return;
+        }
+
+        for (File file : files) {
+            String currentRelativePath = relativePath.isEmpty() ? file.getName()
+                    : relativePath + File.separator + file.getName();
+
+            if (file.isFile()) {
+                if (hasAllowedExtension(file.getName())) {
+                    processFile(file, relativePath, responseBuilder);
+                } else {
+                    System.out.println("Skipped file with unsupported extension: " + file.getName());
+                }
+            } else if (file.isDirectory()) {
+                // Process subdirectory recursively
+                processDirectory(file, currentRelativePath, responseBuilder);
+            }
+        }
+    }
+
+    /**
+     * Processes a single file and adds it to the response builder
+     */
+    private static void processFile(File file, String relativePath, ResponseDatasetAccess.Builder responseBuilder)
+            throws IOException {
+        // Read file content
+        ByteString fileContent = ByteString.copyFrom(Files.readAllBytes(file.toPath()));
+
+        // Create the file path for the response
+        String filePath;
+        if (relativePath.isEmpty()) {
+            filePath = file.getName();
+        } else {
+            filePath = relativePath + File.separator + file.getName();
+        }
+
+        // Add file to response
+        FileData fileData = FileData.newBuilder()
+                .setFileName(filePath) // Include relative path to preserve directory structure
+                .setContent(fileContent)
+                .build();
+
+        responseBuilder.addFiles(fileData);
+        System.out.println("Added file to response: " + filePath);
+    }
+
 }

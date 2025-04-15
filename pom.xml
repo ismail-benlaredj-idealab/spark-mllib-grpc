@@ -53,7 +53,7 @@ limitations under the License.
     <extensions>
       <extension>
         <groupId>kr.motd.maven</groupId>
-        <artifactId>os-maven-plugin</artifactId>
+        <artifactId>os-maven-plugin</artifactId> 
         <version>1.4.1.Final</version>
       </extension>
     </extensions> 

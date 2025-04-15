@@ -26,6 +26,7 @@ public class Client {
     private final RandomForestGrpc.RandomForestBlockingStub blockingStubRandomForest;
     private final LinearRegressionGrpc.LinearRegressionBlockingStub blockingStubLinearRegression;
     private final DatasetAccessGrpc.DatasetAccessBlockingStub blockingStubDatasetAccess;
+
     public Client(String host, int port) {
         channel = ManagedChannelBuilder.forAddress(host, port)
                 .usePlaintext() // Note: For production, use proper authentication
@@ -53,7 +54,7 @@ public class Client {
         }
     }
 
-    public void applyFpGrowth( String datasetPath, String outputPath) {
+    public void applyFpGrowth(String datasetPath, String outputPath) {
         String mainPath = readSettings("DATASET_PATH");
         mainPath = Paths.get(mainPath).toAbsolutePath().toString();
         RequestFrequentItems request = RequestFrequentItems.newBuilder()
@@ -79,7 +80,7 @@ public class Client {
             logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
         }
     }
-   
+
     public void applyLinearRegression(String datasetPath, String outputPath) {
         RequestLinearRegression request = RequestLinearRegression.newBuilder()
                 .setDatasetPath(datasetPath)
@@ -89,19 +90,17 @@ public class Client {
             // Ensure received_files directory exists
 
             RequestLinearRegression response = blockingStubLinearRegression.linearRegressionAnalytics(request);
-           
 
         } catch (StatusRuntimeException e) {
             logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
         }
     }
-    
+
     public void getRemoteDatasets(String folderPath, String outputFolderPath) {
         // Create request with only the folder path parameter
         RequestDatasetAccess request = RequestDatasetAccess.newBuilder()
                 .setFolderPath(folderPath)
                 .build();
-    
         try {
             // Ensure output directory exists
             File outputFolder = new File(outputFolderPath);
@@ -109,30 +108,33 @@ public class Client {
                 outputFolder.mkdirs();
                 logger.info("Created output directory: " + outputFolder.getAbsolutePath());
             }
-    
             // Get the response from the server
             ResponseDatasetAccess response = blockingStubDatasetAccess.remoteDataset(request);
-    
             // Validate response
             if (response == null || response.getFilesList().isEmpty()) {
                 logger.severe("No files received from server");
                 return;
             }
-    
             // Process each file from the response
             int filesSaved = 0;
             for (FileData fileData : response.getFilesList()) {
                 String fileName = fileData.getFileName();
                 ByteString content = fileData.getContent();
-                
                 if (content.isEmpty()) {
                     logger.warning("Empty content for file: " + fileName);
                     continue;
                 }
-                
-                // Create output file
+                // Create output file with path
                 File outputFile = new File(outputFolder, fileName);
-                
+                // Create parent directories if they don't exist
+                File parentDir = outputFile.getParentFile();
+                if (parentDir != null && !parentDir.exists()) {
+                    if (!parentDir.mkdirs()) {
+                        logger.warning("Failed to create directory: " + parentDir.getAbsolutePath());
+                    } else {
+                        logger.info("Created directory structure: " + parentDir.getAbsolutePath());
+                    }
+                }
                 // Write file content
                 try (FileOutputStream fos = new FileOutputStream(outputFile)) {
                     content.writeTo(fos);
@@ -142,39 +144,47 @@ public class Client {
                     logger.log(Level.SEVERE, "Error writing file " + fileName + ": " + e.getMessage(), e);
                 }
             }
-            
             logger.info("Successfully saved " + filesSaved + " files to " + outputFolder.getAbsolutePath());
-    
+
         } catch (StatusRuntimeException e) {
             logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
         }
     }
-    
+
     public static void main(String[] args) throws Exception {
-    	//System.out.println("OOOOOOOOOOOOOOOOOOOOOO"+readSettings("MODE"));
-    	String MODE="PRODUCTION";
-        if(MODE=="PRODUCTION"){
-         // List<String> nodes = Arrays.asList("pe01-vm04", "pe01-vm05", "pe01-vm06",
-          //  "pe02-vm04", "pe02-vm05", "pe02-vm06");
-          List<String> nodes = Arrays.asList("pe01-vm05", "pe01-vm06");
- 
+        String MODE="PRODUCTION";
+        // String MODE = "DEVELOPMENT";
+        if (MODE == "PRODUCTION") {
+            // List<String> nodes = Arrays.asList("pe01-vm04", "pe01-vm05", "pe01-vm06",
+            // "pe02-vm04", "pe02-vm05", "pe02-vm06");
+            List<String> nodes = Arrays.asList("pe01-vm05", "pe01-vm06");
+
             for (String node : nodes) {
                 Client client = new Client(node, 50051);
 
                 try {
-                    client.applyLinearRegression("/home/"+node+"/Documents/datasets", "/home/"+node+"/Documents/output/"+node+"_LinearRegression");
-                    client.getRemoteDatasets("/home/"+node+"/Documents/output/"+node+"_LinearRegression", "/home/pe01-vm03/Documents/agg");
+                    client.applyLinearRegression("/home/" + node + "/Documents/datasets",
+                            "/home/" + node + "/Documents/output/" + node + "_LinearRegression");
+                    client.getRemoteDatasets("/home/" + node + "/Documents/output/" + node + "_LinearRegression",
+                            "/home/pe01-vm03/Documents/agg");
                 } finally {
                     client.shutdown();
                 }
             }
-        }else{
-            //Client client = new Client("localhost", 50051);
-            //  client.applyAnalytics("/home/ismail/grpc-java-examples-master/datasets", "/home/ismail/grpc-java-examples-master/outputDataset");
-            // client.applyFpGrowth("/home/ismail/grpc-java-examples-master/datasets",  "outputPath_FpGrowthXXX"); //// WE ADD TO THE PATH THE NODE NAME FROM THE FOR LOOP
-           // client.applyRandomForest("/home/ismail/grpc-java-examples-master/datasets", "outputPath_RandomForestXXX");
-             // client.applyLinearRegression("/home/ismail/grpc-java-examples-master/datasets", "outputPath_LinearRegressionXXX");
-              //client.shutdown();
+        } else {
+            Client client = new Client("localhost", 50051);
+            // client.applyAnalytics("/home/ismail/grpc-java-examples-master/datasets",
+            // "/home/ismail/grpc-java-examples-master/outputDataset");
+            // client.applyFpGrowth("/home/ismail/grpc-java-examples-master/datasets",
+            // "outputPath_FpGrowthXXX"); //// WE ADD TO THE PATH THE NODE NAME FROM THE FOR
+            // LOOP
+            // client.applyRandomForest("/home/ismail/grpc-java-examples-master/datasets",
+            // "outputPath_RandomForestXXX");
+            // client.applyLinearRegression("/home/ismail/grpc-java-examples-master/datasets",
+            // "outputPath_LinearRegressionXXX");
+            client.getRemoteDatasets("/home/ismail/grpc-java-examples-master/outputPath_LinearRegressionXXX",
+                    "/home/ismail/grpc-java-examples-master/received_files");
+            client.shutdown();
         }
 
     }
