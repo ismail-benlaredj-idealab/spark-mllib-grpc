@@ -39,25 +39,23 @@ limitations under the License.
 <dependency>
     <groupId>org.apache.spark</groupId>
     <artifactId>spark-mllib_2.13</artifactId>
-    <version>3.5.5</version>
+    <version>3.5.5</version> 
 </dependency>
-
     <dependency>
       <groupId>io.grpc</groupId>
       <artifactId>grpc-all</artifactId>
       <version>${grpc.version}</version>
     </dependency>
-   
   </dependencies> 
-  <build>
+  <build> 
     <extensions>
       <extension>
         <groupId>kr.motd.maven</groupId>
         <artifactId>os-maven-plugin</artifactId> 
         <version>1.4.1.Final</version>
-      </extension>
+      </extension> 
     </extensions> 
-    <plugins>
+    <plugins> 
       <plugin>
         <groupId>org.xolstice.maven.plugins</groupId>
         <artifactId>protobuf-maven-plugin</artifactId>

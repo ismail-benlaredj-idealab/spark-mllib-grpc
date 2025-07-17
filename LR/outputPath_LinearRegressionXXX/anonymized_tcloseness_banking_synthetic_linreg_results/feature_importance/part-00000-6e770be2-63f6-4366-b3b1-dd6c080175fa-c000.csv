@@ -1,0 +1,18 @@
+Feature,Coefficient
+RowNumber,1000
+CustomerId,1000
+CreditScore,1000
+Age,1000
+Tenure,1000
+Balance,1000
+NumOfProducts,1000
+HasCrCard,1000
+IsActiveMember,
+EstimatedSalary,1000
+Exited,1000
+Complain,1000
+Satisfaction Score,1000
+Surname_encoded,1000
+Geography_encoded,1000
+Gender_encoded,1000
+Card Type_encoded,1000
