@@ -55,6 +55,8 @@ public class GrpcServer {
                 .addService(new DatasetAccessImpl())
                 .addService(new RandomForestImpl())
                 .addService(new LinearRegressionImpl())
+                // Call the new service here
+                .addService(new AnonymizationAccuracyService())
                 .build()
                 .start();
 

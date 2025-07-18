@@ -89,3 +89,64 @@ message RequestLinearRegression{
 message ResponseLinearRegression {
 bytes file_content = 1;
 }
+
+
+
+
+
+
+// Request message for anonymization accuracy calculation
+message RequestAnonymizationAccuracy {
+    string original_dataset_path = 1;
+    string anonymized_dataset_path = 2;
+    repeated string quasi_identifier_names = 3;
+    string output_path = 4;
+}
+
+// Request message for batch processing multiple datasets
+message RequestBatchAnonymizationAccuracy {
+    string dataset_base_name = 1;
+    int32 num_datasets = 2;
+    string original_dataset_base_path = 3;
+    string anonymized_dataset_base_path = 4;
+    repeated string quasi_identifier_names = 5;
+    string output_path = 6;
+}
+
+// Individual dataset result
+message DatasetResult {
+    int32 dataset_num = 1;
+    double ecs_score = 2;
+    string status = 3;
+    string error_message = 4;
+}
+
+// Response message for single dataset
+message ResponseAnonymizationAccuracy {
+    double ecs_score = 1;
+    string status = 2;
+    string error_message = 3;
+}
+
+// Response message for batch processing
+message ResponseBatchAnonymizationAccuracy {
+    repeated DatasetResult results = 1;
+    int32 total_datasets = 2;
+    int32 successful_datasets = 3;
+    int32 failed_datasets = 4;
+    double mean_ecs_score = 5;
+    double std_ecs_score = 6;
+    double min_ecs_score = 7;
+    double max_ecs_score = 8;
+    string status = 9;
+    string error_message = 10;
+}
+
+// Service definition
+service AnonymizationAccuracy {
+    // Calculate ECS for a single dataset
+    rpc calculateECS(RequestAnonymizationAccuracy) returns (ResponseAnonymizationAccuracy);
+    
+    // Calculate ECS for multiple datasets in batch
+    rpc calculateBatchECS(RequestBatchAnonymizationAccuracy) returns (ResponseBatchAnonymizationAccuracy);
+}

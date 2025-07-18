@@ -22,7 +22,7 @@ limitations under the License.
   <artifactId>grpc-java-examples</artifactId>
   <version>1.71.0</version>
   <packaging>jar</packaging>
-
+ 
   <name>grpc-java-examples</name>
   <description>gRPC Java Examples</description>
   <properties>
