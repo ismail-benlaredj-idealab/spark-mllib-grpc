@@ -37,14 +37,14 @@ limitations under the License.
     <version>3.5.5</version>
 </dependency>
 <dependency>
-    <groupId>org.apache.spark</groupId>
+    <groupId>org.apache.spark</groupId> 
     <artifactId>spark-mllib_2.13</artifactId>
     <version>3.5.5</version> 
 </dependency>
     <dependency>
       <groupId>io.grpc</groupId>
       <artifactId>grpc-all</artifactId>
-      <version>${grpc.version}</version>
+      <version>${grpc.version}</version>  
     </dependency>
   </dependencies> 
   <build> 

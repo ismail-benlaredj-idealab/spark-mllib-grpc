@@ -11,10 +11,7 @@ import java.nio.file.*;
 
 public class AnonymizationAccuracyService extends AnonymizationAccuracyGrpc.AnonymizationAccuracyImplBase {
 
-    /**
-     * A private inner class to hold data loaded from CSV files.
-     * Renamed from DatasetResult to avoid conflicts with the gRPC message class.
-     */
+
     private static class LoadedData {
         final List<List<String>> originalData;
         final List<List<String>> anonymizedData;
@@ -84,7 +81,7 @@ public class AnonymizationAccuracyService extends AnonymizationAccuracyGrpc.Anon
     public void calculateBatchECS(RequestBatchAnonymizationAccuracy req,
                                   StreamObserver<ResponseBatchAnonymizationAccuracy> responseObserver) {
         try {
-            String datasetBaseName = req.getDatasetBaseName();
+            // String datasetBaseName = req.getDatasetBaseName();
             int numDatasets = req.getNumDatasets();
             String originalBasePath = req.getOriginalDatasetBasePath();
             String anonymizedBasePath = req.getAnonymizedDatasetBasePath();
@@ -106,8 +103,8 @@ public class AnonymizationAccuracyService extends AnonymizationAccuracyGrpc.Anon
 
                 try {
                     // Correctly construct file paths
-                    String originalCsvPath = Paths.get(originalBasePath, datasetBaseName + ".csv").toString();
-                    String anonymizedCsvPath = Paths.get(anonymizedBasePath, datasetBaseName + "_A" + i + ".csv").toString();
+                    String originalCsvPath = Paths.get(originalBasePath).toString();
+                    String anonymizedCsvPath = Paths.get(anonymizedBasePath).toString();
 
                     System.out.println("Processing Dataset " + i + ": " + anonymizedCsvPath);
 
@@ -332,14 +329,12 @@ public class AnonymizationAccuracyService extends AnonymizationAccuracyGrpc.Anon
      */
     private void saveResultsToCSV(List<DatasetResult> results, String outputFilename) throws IOException {
         try (PrintWriter writer = new PrintWriter(new FileWriter(outputFilename))) {
-            writer.println("dataset_num,ecs_score,status,error_message");
+            writer.println("Quisi Identifier number,Anonymization Accuracy");
 
             for (DatasetResult result : results) {
-                writer.printf("%d,%.6f,%s,\"%s\"%n",
+                writer.printf("%d,%.6f%n",
                         result.getDatasetNum(),
-                        result.getEcsScore(),
-                        result.getStatus(),
-                        result.getErrorMessage().replace("\"", "\"\"")); // Escape quotes for CSV
+                        result.getEcsScore());
             }
         }
         System.out.println("\nResults saved to " + outputFilename);

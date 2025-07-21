@@ -137,25 +137,21 @@ public class ClientAgg {
                     .newBlockingStub(ClientAgg.channel);
 
 
-            List<String> quasiIdentifiers = Arrays.asList("age", "workclass", "education", "occupation");
+            List<String> quasiIdentifiers = Arrays.asList("CustomerId", "CreditScore", "Gender", "Age", "Tenure", "Balance",
+                    "NumOfProducts", "HasCrCard", "EstimatedSalary", "Satisfaction Score", "Card Type");
 
       
             RequestBatchAnonymizationAccuracy request = RequestBatchAnonymizationAccuracy.newBuilder()
-                    .setDatasetBaseName("adult_data")
-                    .setNumDatasets(5) // The number of anonymized datasets (e.g., adult_data_A1.csv, ...,
-                                       // adult_data_A5.csv)
-                    .setOriginalDatasetBasePath("path/to/your/original") // Path to the directory of the original
-                                                                         // dataset
-                    .setAnonymizedDatasetBasePath("path/to/your/anonymized") // Path to the directory of anonymized
-                                                                             // datasets
+                    .setDatasetBaseName("results_bank_500")
+                    .setNumDatasets(1)  
+                    .setOriginalDatasetBasePath("/home/ismail/grpc-java-examples-master/datasets/banking_synthetic_v1.csv")  
+                    .setAnonymizedDatasetBasePath("/home/ismail/grpc-java-examples-master/datasets/anonymized_bank_500.csv")  
                     .addAllQuasiIdentifierNames(quasiIdentifiers)
-                    .setOutputPath("path/to/your/output") // Where to save the results CSV
+                    .setOutputPath("/home/ismail/grpc-java-examples-master/datasets")  
                     .build();
 
-            // 5. Make the remote call and get the response.
             ResponseBatchAnonymizationAccuracy response = stub.calculateBatchECS(request);
 
-            // 6. Print the results from the response.
             System.out.println("✅ Batch ECS Calculation Status: " + response.getStatus());
             if ("SUCCESS".equals(response.getStatus())) {
                 System.out.println("Total datasets to process: " + response.getTotalDatasets());
