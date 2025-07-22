@@ -55,8 +55,7 @@ public class GrpcServer {
                 .addService(new DatasetAccessImpl())
                 .addService(new RandomForestImpl())
                 .addService(new LinearRegressionImpl())
-                // Call the new service here
-                .addService(new AnonymizationAccuracyService())
+                .addService(new AnonymityServiceImpl())
                 .build()
                 .start();
 
@@ -408,9 +407,43 @@ public class GrpcServer {
         }
     }
 
-    /**
-     * Main launches the server from the command line.
-     */
+private static class AnonymityServiceImpl extends AnonymityServiceGrpc.AnonymityServiceImplBase {
+        @Override
+        public void calculateAA(AARequest req, StreamObserver<AAResponse> responseObserver) {
+            logger.info("Received Anonymization Accuracy request.");
+            AAResponse.Builder responseBuilder = AAResponse.newBuilder();
+            try {
+                // 1. Instantiate the analytics class with paths from the request
+                AnonymizationAccuracyAnalytics analytics = new AnonymizationAccuracyAnalytics(
+                        req.getOriginalCsvPath(),
+                        req.getAnonymizedCsvPath(),
+                        req.getQuasiIdentifierColumnsList(),
+                        req.getOutputResultsPath()
+                );
+
+                // 2. Run the calculation
+                double score = analytics.runCalculation();
+
+                // 3. Build and send a SUCCESS response
+                responseBuilder.setStatus(AAResponse.Status.SUCCESS)
+                               .setAaScore(score)
+                               .setMessage("Successfully calculated AA. Score: " + score);
+                // logger.info("AA calculation successful. Score: " + score);
+
+            } catch (Exception e) {
+                // 4. Build and send an ERROR response
+                logger.severe("Error calculating AA: " + e.getMessage());
+                responseBuilder.setStatus(AAResponse.Status.ERROR)
+                               .setMessage("Failed to calculate AA: " + e.getMessage());
+            }
+            
+            // 5. Send the response to the client
+            responseObserver.onNext(responseBuilder.build());
+            responseObserver.onCompleted();
+        }
+    }
+
+    
     public static void main(String[] args) throws IOException, InterruptedException {
         // Create server instance
         final GrpcServer server = new GrpcServer();

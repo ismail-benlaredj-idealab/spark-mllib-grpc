@@ -1,0 +1,10 @@
+CustomerId, Surname  
+CustomerId, Surname, CreditScore  
+CustomerId, Surname, CreditScore, Geography  
+CustomerId, Surname, CreditScore, Geography, Gender  
+CustomerId, Surname, CreditScore, Geography, Gender, Age  
+CustomerId, Surname, CreditScore, Geography, Gender, Age, Point Earned  
+CustomerId, Surname, CreditScore, Geography, Gender, Age, Point Earned, Balance  
+CustomerId, Surname, CreditScore, Geography, Gender, Age, Point Earned, Balance, NumOfProducts  
+CustomerId, Surname, CreditScore, Geography, Gender, Age, Point Earned, Balance, NumOfProducts, HasCrCard  
+CustomerId, Surname, CreditScore, Geography, Gender, Age, Point Earned, Balance, NumOfProducts, HasCrCard, IsActiveMember
