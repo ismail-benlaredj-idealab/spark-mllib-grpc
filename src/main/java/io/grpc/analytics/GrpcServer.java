@@ -86,6 +86,7 @@ public class GrpcServer {
         @Override
         public void clustringKmeansServer(RequestClustringKmeans req,
                 StreamObserver<ResponseClustringKmeans> responseObserver) {
+                    long startTime = System.nanoTime();
             SparkConf conf = new SparkConf()
                     .setAppName("KMeans Clustering Example")
                     .setMaster("local[*]");
@@ -134,6 +135,7 @@ public class GrpcServer {
 
                         KMeansClusteringAnalytics.ClusteringResult result = analytics.runClustering();
                         allResults.add(result);
+                       responseObserver.onCompleted();
                     } catch (Exception e) {
                         System.err.println("Error processing dataset " + datasetName + ": " + e.getMessage());
                         e.printStackTrace();
@@ -149,6 +151,10 @@ public class GrpcServer {
             } finally {
                 jsc.stop();
             }
+              long endTime = System.nanoTime();
+              double executionTimeInSeconds = (endTime - startTime) / 1_000_000_000.0;
+              String csvFile = "/home/ismail/grpc-java-examples-master/outputDataset/executionTime.csv";
+              writeExecutionTimeToCSV(csvFile, executionTimeInSeconds);
 
         }
     }
@@ -481,13 +487,23 @@ private static class AnonymityServiceImpl extends AnonymityServiceGrpc.Anonymity
         return null;
     }
 
-    public static void writeExecutionTimeToCSV(String csvFile, double executionTimeInSeconds) {
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(csvFile, true))) {
-            writer.write("Excution Time" + "," + executionTimeInSeconds + "\n");
-        } catch (IOException e) {
-            e.printStackTrace();
+  public static void writeExecutionTimeToCSV(String csvFile, double executionTimeInSeconds) {
+    try (BufferedWriter writer = new BufferedWriter(new FileWriter(csvFile, true))) {
+        // Check if file is empty or doesn't exist to add header
+        File file = new File(csvFile);
+        boolean isNewFile = !file.exists() || file.length() == 0;
+        
+        if (isNewFile) {
+            writer.write("Execution Time (seconds)\n");
         }
+        
+        // Add the execution time as a new row
+        writer.write(executionTimeInSeconds + "\n");
+        
+    } catch (IOException e) {
+        e.printStackTrace();
     }
+}
 
     private static List<Path> findCSVFiles(String directory) throws Exception {
         try (Stream<Path> paths = Files.walk(Paths.get(directory))) {

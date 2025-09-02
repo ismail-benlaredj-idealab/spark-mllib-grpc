@@ -22,25 +22,28 @@ limitations under the License.
   <artifactId>grpc-java-examples</artifactId>
   <version>1.71.0</version>
   <packaging>jar</packaging>
- 
   <name>grpc-java-examples</name>
   <description>gRPC Java Examples</description>
   <properties>
     <grpc.version>1.71.0</grpc.version>
     <protoc.version>3.0.0-beta-2</protoc.version>
   </properties>
-
   <dependencies>
   <dependency>
     <groupId>org.apache.spark</groupId>
     <artifactId>spark-core_2.13</artifactId>
     <version>3.5.5</version>
-</dependency>
+</dependency> 
 <dependency>
     <groupId>org.apache.spark</groupId> 
-    <artifactId>spark-mllib_2.13</artifactId>
-    <version>3.5.5</version> 
+    <artifactId>spark-mllib_2.13</artifactId> 
+    <version>3.5.5</version>  
 </dependency>
+<dependency>
+    <groupId>org.apache.spark</groupId>
+    <artifactId>spark-graphx_2.12</artifactId>
+    <version>3.4.1</version>
+ </dependency>
     <dependency> 
       <groupId>io.grpc</groupId>
       <artifactId>grpc-all</artifactId>

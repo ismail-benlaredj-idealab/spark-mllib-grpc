@@ -6,16 +6,20 @@ import org.apache.spark.mllib.clustering.KMeans;
 import org.apache.spark.mllib.clustering.KMeansModel;
 import org.apache.spark.mllib.linalg.Vector;
 import org.apache.spark.mllib.linalg.Vectors;
+import org.apache.spark.api.java.function.Function;
 
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.Serializable;
 import java.util.*;
 
-public class KMeansClusteringAnalytics {
+public class KMeansClusteringAnalytics implements Serializable {
 
-    private final JavaSparkContext jsc;
+    private static final long serialVersionUID = 1L;
+    
+    private final transient JavaSparkContext jsc;
     private final String datasetPath;
     private final String outputDir;
     private final String datasetName;
@@ -48,6 +52,39 @@ public class KMeansClusteringAnalytics {
     }
 
     /**
+     * Parse a CSV line respecting quoted values that may contain commas.
+     * 
+     * @param line The CSV line to parse
+     * @return Array of parsed values
+     */
+    private static String[] parseCSVLine(String line) {
+        List<String> result = new ArrayList<>();
+        boolean inQuotes = false;
+        boolean inDoubleQuotes = false;
+        StringBuilder currentField = new StringBuilder();
+        
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            
+            if (c == '"' && !inQuotes) {
+                inDoubleQuotes = !inDoubleQuotes;
+            } else if (c == '\'' && !inDoubleQuotes) {
+                inQuotes = !inQuotes;
+            } else if (c == ',' && !inQuotes && !inDoubleQuotes) {
+                result.add(currentField.toString().trim());
+                currentField = new StringBuilder();
+            } else {
+                currentField.append(c);
+            }
+        }
+        
+        // Add the last field
+        result.add(currentField.toString().trim());
+        
+        return result.toArray(new String[0]);
+    }
+
+    /**
      * Run K-means clustering on the provided dataset.
      * 
      * @return A summary of the clustering results
@@ -59,7 +96,7 @@ public class KMeansClusteringAnalytics {
         // First pass: identify categorical columns and their possible values
         // Assume first line is header
         String header = data.first();
-        String[] columns = header.split(",");
+        String[] columns = parseCSVLine(header);
         int numColumns = columns.length;
 
         // Skip header for data processing
@@ -71,13 +108,23 @@ public class KMeansClusteringAnalytics {
         Map<Integer, Map<String, Integer>> categoricalMappings = new HashMap<>();
 
         // First scan: determine which columns are categorical
-        List<String[]> rows = dataWithoutHeader.map(line -> line.split(",")).collect();
+        List<String[]> rows = dataWithoutHeader.map(new Function<String, String[]>() {
+            @Override
+            public String[] call(String line) {
+                return parseCSVLine(line);
+            }
+        }).collect();
         for (int i = 0; i < numColumns; i++) {
             boolean categorical = false;
             Set<String> uniqueValues = new HashSet<>();
 
             for (String[] row : rows) {
                 String value = row[i].trim();
+                // Remove surrounding quotes if present
+                if ((value.startsWith("\"") && value.endsWith("\"")) || 
+                    (value.startsWith("'") && value.endsWith("'"))) {
+                    value = value.substring(1, value.length() - 1);
+                }
                 uniqueValues.add(value);
                 try {
                     Double.parseDouble(value);
@@ -119,33 +166,20 @@ public class KMeansClusteringAnalytics {
         for (String[] row : rows) {
             for (int i = 0; i < numColumns; i++) {
                 if (!isCategorical[i]) {
-                    double value = Double.parseDouble(row[i].trim());
-                    minValues[i] = Math.min(minValues[i], value);
-                    maxValues[i] = Math.max(maxValues[i], value);
+                    String value = row[i].trim();
+                    // Remove surrounding quotes if present
+                    if ((value.startsWith("\"") && value.endsWith("\"")) || 
+                        (value.startsWith("'") && value.endsWith("'"))) {
+                        value = value.substring(1, value.length() - 1);
+                    }
+                    double numValue = Double.parseDouble(value);
+                    minValues[i] = Math.min(minValues[i], numValue);
+                    maxValues[i] = Math.max(maxValues[i], numValue);
                 }
             }
         }
 
-        // Find two numerical features for direct plotting
-        List<Integer> numericalColumns = new ArrayList<>();
-        for (int i = 0; i < numColumns; i++) {
-            if (!isCategorical[i]) {
-                numericalColumns.add(i);
-            }
-        }
 
-        // For direct plotting, use the first two numerical features if available
-        int xAxisColumn = -1;
-        int yAxisColumn = -1;
-
-        if (numericalColumns.size() >= 2) {
-            xAxisColumn = numericalColumns.get(0);
-            yAxisColumn = numericalColumns.get(1);
-            System.out.println("Selected columns for direct plotting: " +
-                    columns[xAxisColumn] + " and " + columns[yAxisColumn]);
-        } else {
-            System.out.println("Not enough numerical columns for direct plotting. Will use dimensionality reduction.");
-        }
 
         // Convert data to feature vectors with one-hot encoding for categorical
         // variables
@@ -161,34 +195,42 @@ public class KMeansClusteringAnalytics {
 
         // Create a mapping of raw data to feature vectors
         final int finalVectorSize = vectorSize;
-        JavaRDD<Vector> parsedData = rowsRDD.map(values -> {
-            double[] features = new double[finalVectorSize];
+        JavaRDD<Vector> parsedData = rowsRDD.map(new Function<String[], Vector>() {
+            @Override
+            public Vector call(String[] values) {
+                double[] features = new double[finalVectorSize];
 
-            int featureIndex = 0;
-            for (int i = 0; i < values.length; i++) {
-                String value = values[i].trim();
-
-                if (finalIsCategorical[i]) {
-                    // One-hot encoding
-                    Map<String, Integer> valueMap = finalCategoricalMappings.get(i);
-                    int oneHotIndex = valueMap.get(value);
-                    for (int j = 0; j < finalCategoricalValues.get(i).size(); j++) {
-                        features[featureIndex++] = (j == oneHotIndex) ? 1.0 : 0.0;
+                int featureIndex = 0;
+                for (int i = 0; i < values.length; i++) {
+                    String value = values[i].trim();
+                    // Remove surrounding quotes if present
+                    if ((value.startsWith("\"") && value.endsWith("\"")) || 
+                        (value.startsWith("'") && value.endsWith("'"))) {
+                        value = value.substring(1, value.length() - 1);
                     }
-                } else {
-                    // Normalize numerical values
-                    if (finalMaxValues[i] > finalMinValues[i]) {
-                        double normalizedValue = (Double.parseDouble(value) - finalMinValues[i]) /
-                                (finalMaxValues[i] - finalMinValues[i]);
-                        features[featureIndex++] = normalizedValue;
+
+                    if (finalIsCategorical[i]) {
+                        // One-hot encoding
+                        Map<String, Integer> valueMap = finalCategoricalMappings.get(i);
+                        int oneHotIndex = valueMap.get(value);
+                        for (int j = 0; j < finalCategoricalValues.get(i).size(); j++) {
+                            features[featureIndex++] = (j == oneHotIndex) ? 1.0 : 0.0;
+                        }
                     } else {
-                        // Handle the case where min and max are the same (constant feature)
-                        features[featureIndex++] = 0.0;
+                        // Normalize numerical values
+                        if (finalMaxValues[i] > finalMinValues[i]) {
+                            double normalizedValue = (Double.parseDouble(value) - finalMinValues[i]) /
+                                    (finalMaxValues[i] - finalMinValues[i]);
+                            features[featureIndex++] = normalizedValue;
+                        } else {
+                            // Handle the case where min and max are the same (constant feature)
+                            features[featureIndex++] = 0.0;
+                        }
                     }
                 }
-            }
 
-            return Vectors.dense(features);
+                return Vectors.dense(features);
+            }
         });
 
         parsedData.cache();
@@ -204,61 +246,7 @@ public class KMeansClusteringAnalytics {
             allPredictions.add(clusters.predict(point));
         }
 
-        // Prepare 2D coordinates for plotting
-        double[][] plotCoordinates = new double[rows.size()][2];
 
-        if (xAxisColumn >= 0 && yAxisColumn >= 0) {
-            // Use selected numerical features directly
-            for (int i = 0; i < rows.size(); i++) {
-                double xValue = Double.parseDouble(rows.get(i)[xAxisColumn].trim());
-                double yValue = Double.parseDouble(rows.get(i)[yAxisColumn].trim());
-
-                plotCoordinates[i][0] = xValue;
-                plotCoordinates[i][1] = yValue;
-            }
-        } else {
-            // Simplified approach: find two dimensions with the highest variance
-            double[] variances = new double[vectorSize];
-            double[] means = new double[vectorSize];
-
-            // Calculate means
-            for (Vector point : allPoints) {
-                for (int i = 0; i < vectorSize; i++) {
-                    means[i] += point.apply(i);
-                }
-            }
-            for (int i = 0; i < vectorSize; i++) {
-                means[i] /= allPoints.size();
-            }
-
-            // Calculate variances
-            for (Vector point : allPoints) {
-                for (int i = 0; i < vectorSize; i++) {
-                    variances[i] += Math.pow(point.apply(i) - means[i], 2);
-                }
-            }
-            for (int i = 0; i < vectorSize; i++) {
-                variances[i] /= allPoints.size();
-            }
-
-            // Find two dimensions with highest variance
-            int dim1 = 0;
-            int dim2 = 1;
-            for (int i = 2; i < vectorSize; i++) {
-                if (variances[i] > variances[dim1]) {
-                    dim2 = dim1;
-                    dim1 = i;
-                } else if (variances[i] > variances[dim2]) {
-                    dim2 = i;
-                }
-            }
-
-            // Project to these two dimensions
-            for (int i = 0; i < allPoints.size(); i++) {
-                plotCoordinates[i][0] = allPoints.get(i).apply(dim1);
-                plotCoordinates[i][1] = allPoints.get(i).apply(dim2);
-            }
-        }
 
         // Write results to CSV file with complete data for analysis
         String outputFilePath = outputDir + "/"+System.getProperty("user.name")+"_kmeans_" + datasetName +
@@ -275,12 +263,8 @@ public class KMeansClusteringAnalytics {
         }
 
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(outputFilePath))) {
-            // Write header with additional columns for plotting coordinates
-            if (xAxisColumn >= 0 && yAxisColumn >= 0) {
-                writer.write(header + ",plot_x,plot_y,cluster\n");
-            } else {
-                writer.write(header + ",dim1,dim2,cluster\n");
-            }
+            // Write header with additional columns for cluster
+            writer.write(header + ",cluster\n");
 
             // Write data rows with cluster assignments
             for (int i = 0; i < rows.size(); i++) {
@@ -291,10 +275,6 @@ public class KMeansClusteringAnalytics {
                     sb.append(rows.get(i)[j]);
                     sb.append(",");
                 }
-
-                // Add plotting coordinates
-                sb.append(plotCoordinates[i][0]).append(",");
-                sb.append(plotCoordinates[i][1]).append(",");
 
                 // Add cluster assignment
                 sb.append(allPredictions.get(i));
@@ -317,31 +297,29 @@ public class KMeansClusteringAnalytics {
                 clusters,
                 cost,
                 outputFilePath,
-                allPredictions,
-                plotCoordinates);
+                allPredictions);
     }
 
     /**
      * Class to hold the results of the clustering analysis.
      */
-    public static class ClusteringResult {
-        private final KMeansModel model;
+    public static class ClusteringResult implements Serializable {
+        private static final long serialVersionUID = 1L;
+        
+        private final transient KMeansModel model;
         private final double cost;
         private final String outputFilePath;
         private final List<Integer> clusterAssignments;
-        private final double[][] plotCoordinates;
 
         public ClusteringResult(
                 KMeansModel model,
                 double cost,
                 String outputFilePath,
-                List<Integer> clusterAssignments,
-                double[][] plotCoordinates) {
+                List<Integer> clusterAssignments) {
             this.model = model;
             this.cost = cost;
             this.outputFilePath = outputFilePath;
             this.clusterAssignments = clusterAssignments;
-            this.plotCoordinates = plotCoordinates;
         }
 
         public KMeansModel getModel() {
@@ -360,16 +338,12 @@ public class KMeansClusteringAnalytics {
             return clusterAssignments;
         }
 
-        public double[][] getPlotCoordinates() {
-            return plotCoordinates;
-        }
-
         @Override
         public String toString() {
             return "ClusteringResult{" +
                     "cost=" + cost +
                     ", outputFilePath='" + outputFilePath + '\'' +
-                    ", numClusters=" + model.clusterCenters().length +
+                    ", numClusters=" + (model != null ? model.clusterCenters().length : 0) +
                     ", numDataPoints=" + clusterAssignments.size() +
                     '}';
         }

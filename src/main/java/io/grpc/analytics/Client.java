@@ -152,8 +152,8 @@ public class Client {
     }
 
     public static void main(String[] args) throws Exception {
-        String MODE = "PRODUCTION";
-        // String MODE = "DEVELOPMENT";
+        // String MODE = "PRODUCTION";
+        String MODE = "DEVELOPMENT";
         if (MODE == "PRODUCTION") {
             // List<String> nodes = Arrays.asList("pe01-vm04", "pe01-vm05", "pe01-vm06",
             // "pe02-vm04", "pe02-vm05", "pe02-vm06");
@@ -183,46 +183,12 @@ public class Client {
             // client.applyLinearRegression("/home/ismail/grpc-java-examples-master/datasets",
             // "outputPath_LinearRegressionXXX");
 
-            client.applyAnalytics("/home/ismail/grpc-java-examples-master/datasets",
+            client.applyAnalytics("/home/ismail/grpc-java-examples-master/clustring",
                     "/home/ismail/grpc-java-examples-master/outputDataset");
 
-            AnonymizationAccuracyGrpc.AnonymizationAccuracyBlockingStub stub = AnonymizationAccuracyGrpc
-                    .newBlockingStub(client.channel);
-
-            List<String> quasiIdentifiers = Arrays.asList("age", "workclass", "education", "occupation");
-
-            RequestBatchAnonymizationAccuracy request = RequestBatchAnonymizationAccuracy.newBuilder()
-                    .setDatasetBaseName("adult_data")
-                    .setNumDatasets(5) // The number of anonymized datasets (e.g., adult_data_A1.csv, ...,
-                                       // adult_data_A5.csv)
-                    .setOriginalDatasetBasePath("path/to/your/original") // Path to the directory of the original
-                                                                         // dataset
-                    .setAnonymizedDatasetBasePath("path/to/your/anonymized") // Path to the directory of anonymized
-                                                                             // datasets
-                    .addAllQuasiIdentifierNames(quasiIdentifiers)
-                    .setOutputPath("path/to/your/output") // Where to save the results CSV
-                    .build();
-
-            // 5. Make the remote call and get the response.
-            ResponseBatchAnonymizationAccuracy response = stub.calculateBatchECS(request);
-
-            // 6. Print the results from the response.
-            System.out.println("✅ Batch ECS Calculation Status: " + response.getStatus());
-            if ("SUCCESS".equals(response.getStatus())) {
-                System.out.println("Total datasets to process: " + response.getTotalDatasets());
-                System.out.println("Successfully processed: " + response.getSuccessfulDatasets());
-                System.out.println("Failed: " + response.getFailedDatasets());
-                System.out.printf("Mean ECS Score: %.4f%n", response.getMeanEcsScore());
-                System.out.printf("Std Dev ECS Score: %.4f%n", response.getStdEcsScore());
-                System.out.printf("Min ECS Score: %.4f%n", response.getMinEcsScore());
-                System.out.printf("Max ECS Score: %.4f%n", response.getMaxEcsScore());
-                System.out.println("Results saved to the specified output path.");
-            } else {
-                System.out.println("❌ Error: " + response.getErrorMessage());
-            }
-
-            client.getRemoteDatasets("/home/ismail/grpc-java-examples-master/outputPath_LinearRegressionXXX",
-                    "/home/ismail/grpc-java-examples-master/received_files");
+         
+            // client.getRemoteDatasets("/home/ismail/grpc-java-examples-master/outputPath_LinearRegressionXXX",
+            //         "/home/ismail/grpc-java-examples-master/received_files");
             client.shutdown();
         }
 
