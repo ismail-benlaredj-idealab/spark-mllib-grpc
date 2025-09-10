@@ -87,10 +87,13 @@ public class GrpcServer {
         public void clustringKmeansServer(RequestClustringKmeans req,
                 StreamObserver<ResponseClustringKmeans> responseObserver) {
                     long startTime = System.nanoTime();
-            SparkConf conf = new SparkConf()
-                    .setAppName("KMeans Clustering Example")
-                    .setMaster("local[*]");
-            JavaSparkContext jsc = new JavaSparkContext(conf);
+            // SparkConf conf = new SparkConf()
+            //         .setAppName("KMeans Clustering Example")
+            //         .setMaster("local[*]");
+            // JavaSparkContext jsc = new JavaSparkContext(conf);
+
+             JavaSparkContext jsc = SparkContextManager.getOrCreateSparkContext();
+            
 
             try {
                 // Define parameters
@@ -113,7 +116,7 @@ public class GrpcServer {
                     return;
                 }
 
-                System.out.println("Found " + datasetPaths.size() + " CSV datasets to process");
+                // System.out.println("Found " + datasetPaths.size() + " CSV datasets to process");
                 List<KMeansClusteringAnalytics.ClusteringResult> allResults = new ArrayList<>();
                 for (Path datasetPath : datasetPaths) {
                     String fullPath = datasetPath.toString();
@@ -125,8 +128,8 @@ public class GrpcServer {
                         datasetName = fileName.substring(0, fileName.length() - 4);
                     }
 
-                    System.out.println("***********========================================");
-                    System.out.println("Processing dataset: " + datasetName);
+                    // System.out.println("***********========================================");
+                    // System.out.println("Processing dataset: " + datasetName);
 
                     try {
                         // Create and run the K-means clustering analysis
@@ -135,7 +138,11 @@ public class GrpcServer {
 
                         KMeansClusteringAnalytics.ClusteringResult result = analytics.runClustering();
                         allResults.add(result);
-                       responseObserver.onCompleted();
+                    //    responseObserver.onCompleted("Done");
+                    responseObserver.onNext(ResponseClustringKmeans.newBuilder()
+                            .setRes("Done") // You can customize the response as needed
+                            .build());
+                    responseObserver.onCompleted();
                     } catch (Exception e) {
                         System.err.println("Error processing dataset " + datasetName + ": " + e.getMessage());
                         e.printStackTrace();
@@ -143,13 +150,13 @@ public class GrpcServer {
                     }
                 }
 
-                System.out.println("Total datasets processed: " + allResults.size());
+                // System.out.println("Total datasets processed: " + allResults.size());
 
             } catch (Exception e) {
                 System.err.println("Error in batch processing: " + e.getMessage());
                 e.printStackTrace();
             } finally {
-                jsc.stop();
+                // jsc.stop();
             }
               long endTime = System.nanoTime();
               double executionTimeInSeconds = (endTime - startTime) / 1_000_000_000.0;

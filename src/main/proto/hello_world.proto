@@ -22,9 +22,7 @@ message RequestClustringKmeans {
  
 // The response message containing the greetings
 message ResponseClustringKmeans {
-string file_name = 1;
-bytes file_content = 2;
-string nodeName = 3;
+string res = 1;
 }
 
 service FrequentItems {

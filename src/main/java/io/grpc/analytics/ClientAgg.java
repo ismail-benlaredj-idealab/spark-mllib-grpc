@@ -197,9 +197,9 @@ public class ClientAgg {
 
     public static void main(String[] args) throws Exception {
 
-        String MODE = "dev"; // dev or prod
+        String MODE = "prod"; // dev or prod
 
-        if (MODE == "prod") {
+        if (MODE == "dev") {
 
             // List<String> nodes = Arrays.asList("pe01-vm04", "pe01-vm05", "pe01-vm06",
             // "pe02-vm04", "pe02-vm05", "pe02-vm06");
@@ -260,55 +260,58 @@ public class ClientAgg {
     /////////////////////////////CLUSTRING of CLUSTERS//////////////////////////////
     /// 
     ///   
+            long start =0;
       for (String node : nodes) {
                 ClientAgg ClientAgg = new ClientAgg(node, 50051);
-            long start = System.currentTimeMillis();
-            ClientAgg.applyAnalytics("/home/"+  node +"/Documents/spark-mllib-grpc-dev/datasets/clustring/bank_500.csv",
+            start = System.currentTimeMillis();
+            ClientAgg.applyAnalytics("/home/"+  node +"/Documents/spark-mllib-grpc-dev/clustring/bank_3000.csv",
                     "/home/"+  node +"/Documents/spark-mllib-grpc-dev/outputDataset");
             ClientAgg.getRemoteDatasets(
-                    "/home/"+  node +"/Documents/spark-mllib-grpc-dev/outputDataset/"+  node +"_kmeans_bank_500.csv",
-                    "/home/ "+System.getProperty("user.name")+"/Documents/spark-mllib-grpc-dev/received_files");
+                    "/home/"+  node +"/Documents/spark-mllib-grpc-dev/outputDataset/"+  node +"_kmeans_bank_3000.csv",
+                    "/home/"+System.getProperty("user.name")+"/Documents/spark-mllib-grpc-dev/received_files");
 
-            SparkConf conf = new SparkConf()
-                    .setAppName("ClusterOfClusters")
-                    .setMaster("local[*]"); // Use local mode for testing
-            JavaSparkContext jsc = new JavaSparkContext(conf);
-
-            // List of dataset file paths (CSV files)
-                     List<String> receivedPaths = getCsvFiles("/home/"+System.getProperty("user.name")+"/Documents/spark-mllib-grpc-dev/received_files");
-
-            // Output directory
-            String outputDir = "/home/"+System.getProperty("user.name")+"/Documents/spark-mllib-grpc-dev/clusterComb/kmeans_bank_500_clusterOfclusters.csv";
-
-            // Number of clusters and iterations
-            int numClusters = 5;
-            int numIterations = 20;
-
-            // Create the clustering object
-            ClusterAgg_V1 clustering = new ClusterAgg_V1(
-                    jsc,
-                    receivedPaths,
-                    outputDir,
-                    numClusters,
-                    numIterations);
-
-            // Run clustering
-            clustering.runClustering();
-            long end = System.currentTimeMillis();
-            logExecutionTime(start, end, "/home/"+  node +"/grpc-java-examples-master/received_files/ismail_kmeans_bank_500.csv",
-                    "/home/"+  node +"/grpc-java-examples-master/clusterComb/executionTime.csv");
-            // Stop Spark
-            jsc.close();
       }
+
+      SparkConf conf = new SparkConf()
+              .setAppName("ClusterOfClusters")
+              .setMaster("local[*]"); // Use local mode for testing
+      JavaSparkContext jsc = new JavaSparkContext(conf);
+
+      // List of dataset file paths (CSV files)
+               List<String> receivedPaths = getCsvFiles("/home/"+System.getProperty("user.name")+"/Documents/spark-mllib-grpc-dev/received_files");
+
+      // Output directory
+      String outputDir = "/home/"+System.getProperty("user.name")+"/Documents/spark-mllib-grpc-dev/clusterComb/kmeans_bank_3000_clusterOfclusters.csv";
+
+      // Number of clusters and iterations
+      int numClusters = 5;
+      int numIterations = 20;
+
+      // Create the clustering object
+      ClusterAgg_V1 clustering = new ClusterAgg_V1(
+              jsc,
+              receivedPaths,
+              outputDir,
+              numClusters,
+              numIterations);
+
+      // Run clustering
+      clustering.runClustering();
+      long end = System.currentTimeMillis();
+      logExecutionTime(start, end, "/home/"+  System.getProperty("user.name") +"/Documents/spark-mllib-grpc-dev/received_files/"+nodes.get(0) +"_kmeans_bank_3000.csv",
+              "/home/"+  System.getProperty("user.name") +"/Documents/spark-mllib-grpc-dev/clusterComb/executionTime.csv");
+      // Stop Spark
+      jsc.close();
+      
     
         } else {
 
             ClientAgg ClientAgg = new ClientAgg("localhost", 50051);
             long start = System.currentTimeMillis();
-            ClientAgg.applyAnalytics("/home/ismail/grpc-java-examples-master/clustring/bank_500.csv",
+            ClientAgg.applyAnalytics("/home/ismail/grpc-java-examples-master/clustring/bank_3000.csv",
                     "/home/ismail/grpc-java-examples-master/outputDataset");
             ClientAgg.getRemoteDatasets(
-                    "/home/ismail/grpc-java-examples-master/outputDataset/ismail_kmeans_bank_500.csv",
+                    "/home/ismail/grpc-java-examples-master/outputDataset/ismail_kmeans_bank_3000.csv",
                     "/home/ismail/grpc-java-examples-master/received_files");
             // ClientAgg.getRemoteDatasets("/home/ismail/grpc-java-examples-master/outputDataset/executionTime.csv",
             //         "/home/ismail/grpc-java-examples-master/received_files");
@@ -323,7 +326,7 @@ public class ClientAgg {
                      List<String> receivedPaths = getCsvFiles("/home/ismail/grpc-java-examples-master/received_files");
 
             // Output directory
-            String outputDir = "/home/ismail/grpc-java-examples-master/clusterComb/ismail_kmeans_bank_500_clusterOfclusters.csv";
+            String outputDir = "/home/ismail/grpc-java-examples-master/clusterComb/ismail_kmeans_bank_3000_clusterOfclusters.csv";
 
             // Number of clusters and iterations
             int numClusters = 5;
@@ -340,7 +343,7 @@ public class ClientAgg {
             // Run clustering
             clustering.runClustering();
             long end = System.currentTimeMillis();
-            logExecutionTime(start, end, "/home/ismail/grpc-java-examples-master/received_files/ismail_kmeans_bank_500.csv",
+            logExecutionTime(start, end, "/home/ismail/grpc-java-examples-master/received_files/ismail_kmeans_bank_3000.csv",
                     "/home/ismail/grpc-java-examples-master/clusterComb/executionTime.csv");
             // Stop Spark
             jsc.close();

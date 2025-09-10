@@ -258,7 +258,7 @@ public class KMeansClusteringAnalytics implements Serializable {
         if (outputDirectory != null && !outputDirectory.exists()) {
             // Create the directory and any necessary parent directories
             if (outputDirectory.mkdirs()) {
-                System.out.println("Directory created successfully: " + outputDirectory.getAbsolutePath());
+                // System.out.println("Directory created successfully: " + outputDirectory.getAbsolutePath());
             }
         }
 
@@ -284,14 +284,14 @@ public class KMeansClusteringAnalytics implements Serializable {
             }
         }
 
-        // Output to console
-        System.out.println("\nCluster centers:");
-        for (Vector center : clusters.clusterCenters()) {
-            System.out.println(" " + center);
-        }
+        // // Output to console
+        // System.out.println("\nCluster centers:");
+        // for (Vector center : clusters.clusterCenters()) {
+        //     System.out.println(" " + center);
+        // }
 
-        double cost = clusters.computeCost(parsedData.rdd());
-        System.out.println("Within Set Sum of Squared Errors = " + cost);
+         double cost = clusters.computeCost(parsedData.rdd());
+        // System.out.println("Within Set Sum of Squared Errors = " + cost);
 
         return new ClusteringResult(
                 clusters,
