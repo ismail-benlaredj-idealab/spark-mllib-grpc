@@ -25,31 +25,34 @@ public class RandomForestAnalytics {
     private SparkSession spark;
     private String datasetPath;
     private String outputDir = "node1";
-    
+
     /**
      * Constructor for RandomForestAnalytics
+     * 
      * @param sparkSession An existing SparkSession
-     * @param datasetPath Path to the CSV dataset
+     * @param datasetPath  Path to the CSV dataset
      */
     public RandomForestAnalytics(SparkSession sparkSession, String datasetPath) {
         this.spark = sparkSession;
         this.datasetPath = datasetPath;
     }
-    
+
     /**
      * Constructor with output directory specification
+     * 
      * @param sparkSession An existing SparkSession
-     * @param datasetPath Path to the CSV dataset
-     * @param outputDir Directory to save results
+     * @param datasetPath  Path to the CSV dataset
+     * @param outputDir    Directory to save results
      */
     public RandomForestAnalytics(SparkSession sparkSession, String datasetPath, String outputDir) {
         this.spark = sparkSession;
         this.datasetPath = datasetPath;
         this.outputDir = outputDir;
     }
-    
+
     /**
      * Main method to run the random forest analysis
+     * 
      * @return PipelineModel The trained model
      */
     public PipelineModel runAnalysis() {
@@ -149,13 +152,36 @@ public class RandomForestAnalytics {
         Dataset<Row> trainingData = splits[0];
         Dataset<Row> testData = splits[1];
 
-        // train a Random Forest Regressor model
+        int requiredMaxBins = 32; // Default
+        if (categoricalFeatures.length > 0) {
+            int maxCategories = 0;
+            for (String feature : categoricalFeatures) {
+                long distinctCount = data.select(feature).distinct().count();
+                if (distinctCount > maxCategories) {
+                    maxCategories = (int) distinctCount;
+                }
+            }
+            requiredMaxBins = Math.max(32, maxCategories + 10);
+            System.out.println("Detected maximum categories: " + maxCategories);
+            System.out.println("Setting maxBins to: " + requiredMaxBins);
+        }
+
+        VectorIndexer vectorIndexer = new VectorIndexer()
+                .setInputCol("features")
+                .setOutputCol("indexedFeatures")
+                .setMaxCategories(requiredMaxBins)
+                .setHandleInvalid("keep");
+
+        pipelineStages.add(vectorIndexer);
+
+        // Update RandomForestRegressor
         RandomForestRegressor rf = new RandomForestRegressor()
                 .setLabelCol(labelColumn)
-                .setFeaturesCol("features")
+                .setFeaturesCol("indexedFeatures")
                 .setNumTrees(10)
                 .setMaxDepth(5)
-                .setSeed(1234);
+                .setSeed(1234)
+                .setMaxBins(requiredMaxBins);
 
         pipelineStages.add(rf);
 
@@ -209,7 +235,7 @@ public class RandomForestAnalytics {
 
         // Save model performance metrics
         saveModelPerformance(predictions, evaluator, labelColumn);
-        
+
         return model;
     }
 
@@ -327,25 +353,5 @@ public class RandomForestAnalytics {
             System.err.println("Error saving model performance: " + e.getMessage());
         }
     }
-    
-    /**
-     * Example of how to use this class
-     */
-    // public static void main(String[] args) {
-    //     // Initialize Spark session
-    //     SparkSession spark = SparkSession.builder()
-    //             .appName("RandomForestExample")
-    //             .master("local[*]")
-    //             .getOrCreate();
 
-    //     // Path to your dataset - update this
-    //     String datasetPath = "/home/ismail/grpc-java-examples-master/insurance_v1.csv";
-        
-    //     // Create and run the analysis
-    //     RandomForestAnalytics analytics = new RandomForestAnalytics(spark, datasetPath);
-    //     PipelineModel model = analytics.runAnalysis();
-        
-    //     // Stop the Spark session
-    //     spark.stop();
-    // }
 }

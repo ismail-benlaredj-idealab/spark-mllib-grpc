@@ -7,6 +7,7 @@ import org.apache.spark.ml.evaluation.RegressionEvaluator;
 import org.apache.spark.ml.feature.OneHotEncoder;
 import org.apache.spark.ml.feature.StringIndexer;
 import org.apache.spark.ml.feature.VectorAssembler;
+import org.apache.spark.ml.regression.GeneralizedLinearRegressionTrainingSummary;
 import org.apache.spark.ml.regression.LinearRegression;
 import org.apache.spark.ml.regression.LinearRegressionModel;
 import org.apache.spark.sql.*;
@@ -167,7 +168,7 @@ public class LinearRegressionAnalytics {
 
                         // Evaluate the model
                         RegressionEvaluator evaluator = new RegressionEvaluator()
-                                        .setLabelCol(labelColumn)
+                                        .setLabelCol(labelColumn) 
                                         .setPredictionCol("prediction")
                                         .setMetricName("rmse");
 
@@ -183,6 +184,19 @@ public class LinearRegressionAnalytics {
                         resultRows.add(RowFactory.create("R²", lrModel.summary().r2()));
                         resultRows.add(RowFactory.create("Mean Absolute Error", lrModel.summary().meanAbsoluteError()));
                         resultRows.add(RowFactory.create("Mean Squared Error", lrModel.summary().meanSquaredError()));
+
+                        System.out.println("**/*/*/*/*/*/*/*/*/*/*/*/*/*----------------------------------------------/*/*/*/*");
+
+                        // // Summarize the model over the training set and print out some metrics
+                        // org.apache.spark.ml.regression.LinearRegressionTrainingSummary summary = lrModel.summary();
+                        // System.out.println("Coefficient Standard Errors: "
+                        //                 + Arrays.toString(summary.coefficientStandardErrors()));
+                        // System.out.println("T Values: " + Arrays.toString(summary.tValues()));
+                        // System.out.println("P Values: " + Arrays.toString(summary.pValues()));
+                        // System.out.println("Explained Variance: " + summary.explainedVariance());
+                        // System.out.println("Deviance Residuals: ");
+                        // summary.residuals().show();
+                        System.out.println("**/*/*/*/*/*/*/*/*/*/*/*/*/*----------------------------------------------/*/*/*/*");
 
                         // Create schema for the results DataFrame
                         StructType resultSchema = DataTypes.createStructType(new StructField[] {
@@ -236,11 +250,16 @@ public class LinearRegressionAnalytics {
                                         .mode("overwrite")
                                         .csv(outputDir + "/feature_importance");
 
+                     
+                        
+                        // Save the model
+                        model.write().overwrite().save(outputDir + "/model");
+ 
                         System.out.println("Linear regression completed successfully. Results saved to " + outputDir);
 
                         // Return the results
                         return new LinearRegressionResult(rmse, lrModel.summary().r2(),
-                                        lrModel.summary().meanAbsoluteError(), lrModel.summary().meanSquaredError());
+                                        lrModel.summary().meanAbsoluteError(), lrModel.summary().meanSquaredError(), testData, trainingData.count());
 
                 } catch (Exception e) {
                         System.err.println("Error in Spark Linear Regression application: " + e.getMessage());
@@ -257,12 +276,17 @@ public class LinearRegressionAnalytics {
                 private final double r2;
                 private final double mae;
                 private final double mse;
+                private final Dataset<Row> testData;
+                private final Long trainingDataSize ; 
 
-                public LinearRegressionResult(double rmse, double r2, double mae, double mse) {
+                public LinearRegressionResult(double rmse, double r2, double mae, double mse, Dataset<Row> testData, Long trainingDataSize) {
                         this.rmse = rmse;
                         this.r2 = r2;
                         this.mae = mae;
                         this.mse = mse;
+                        this.testData = testData;
+                        this.trainingDataSize = trainingDataSize;
+
                 }
 
                 public double getRmse() {
@@ -279,6 +303,12 @@ public class LinearRegressionAnalytics {
 
                 public double getMse() {
                         return mse;
+                }
+                public Dataset<Row> getTestData() {
+                        return testData;
+                }
+                public Long getTrainingDataSize() {
+                        return trainingDataSize;
                 }
 
                 @Override

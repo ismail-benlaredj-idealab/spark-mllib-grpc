@@ -178,13 +178,13 @@ public class Client {
             // client.applyFpGrowth("/home/ismail/grpc-java-examples-master/datasets",
             // "outputPath_FpGrowthXXX"); //// WE ADD TO THE PATH THE NODE NAME FROM THE FOR
             // LOOP
-            // client.applyRandomForest("/home/ismail/grpc-java-examples-master/datasets",
-            // "outputPath_RandomForestXXX");
+            client.applyRandomForest("/home/ismail/grpc-java-examples-master/clustring/bank_500.csv",
+            "outputPath_RandomForestXXX");
             // client.applyLinearRegression("/home/ismail/grpc-java-examples-master/datasets",
             // "outputPath_LinearRegressionXXX");
 
-            client.applyAnalytics("/home/ismail/grpc-java-examples-master/clustring",
-                    "/home/ismail/grpc-java-examples-master/outputDataset");
+            // client.applyAnalytics("/home/ismail/grpc-java-examples-master/clustring",
+            //         "/home/ismail/grpc-java-examples-master/outputDataset");
 
          
             // client.getRemoteDatasets("/home/ismail/grpc-java-examples-master/outputPath_LinearRegressionXXX",

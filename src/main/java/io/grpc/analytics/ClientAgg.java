@@ -3,6 +3,7 @@ package io.grpc.analytics;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.StatusRuntimeException;
+import io.grpc.analytics.LinearRegressionAnalytics.LinearRegressionResult;
 import scala.Tuple2;
 
 import java.io.BufferedReader;
@@ -12,6 +13,7 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.channels.Pipe;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -23,6 +25,20 @@ import java.util.logging.Logger;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.ml.PipelineModel;
+import org.apache.spark.ml.evaluation.RegressionEvaluator;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.SparkSession;
+
+import org.apache.spark.ml.regression.LinearRegressionModel;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.RowFactory;
+import org.apache.spark.sql.functions;
+import org.apache.spark.sql.types.DataTypes;
+import org.apache.spark.sql.types.StructField;
+import org.apache.spark.sql.types.StructType;
+import org.apache.spark.ml.linalg.Vectors;
+import org.apache.spark.ml.Transformer;
 
 import com.google.protobuf.ByteString;
 
@@ -35,6 +51,7 @@ public class ClientAgg {
     private final AnonymityServiceGrpc.AnonymityServiceBlockingStub blockingStubAA;
     private final ClustringAnalysisGrpc.ClustringAnalysisBlockingStub blockingStubKMeans;
     private final DatasetAccessGrpc.DatasetAccessBlockingStub blockingStubDatasetAccess;
+    private final RandomForestGrpc.RandomForestBlockingStub blockingStubRandomForest;
 
     /** Construct client connecting to server at {@code host:port}. */
     public ClientAgg(String host, int port) {
@@ -45,6 +62,7 @@ public class ClientAgg {
         blockingStubAA = AnonymityServiceGrpc.newBlockingStub(channel);
         blockingStubKMeans = ClustringAnalysisGrpc.newBlockingStub(channel);
         blockingStubDatasetAccess = DatasetAccessGrpc.newBlockingStub(channel);
+        this.blockingStubRandomForest = RandomForestGrpc.newBlockingStub(channel);
     }
 
     public void shutdown() throws InterruptedException {
@@ -195,223 +213,93 @@ public class ClientAgg {
         }
     }
 
+    public void applyRandomForest(String datasetPath, String outputPath) {
+        RequestRandomForest request = RequestRandomForest.newBuilder()
+                .setDatasetPath(datasetPath)
+                .setOutputPath(outputPath)
+                .build();
+        try {
+            ResponseRandomForest response = blockingStubRandomForest.randomForestAnalytics(request);
+        } catch (StatusRuntimeException e) {
+            logger.log(Level.WARNING, "RPC failed: {0}", e.getStatus());
+        }
+    }
+
     public static void main(String[] args) throws Exception {
 
-        String MODE = "prod"; // dev or prod
+        String MODE = "dev"; // dev or prod
 
-        if (MODE == "dev") {
+        if (MODE == "prod") {
 
             // List<String> nodes = Arrays.asList("pe01-vm04", "pe01-vm05", "pe01-vm06",
             // "pe02-vm04", "pe02-vm05", "pe02-vm06");
             List<String> nodes = Arrays.asList("pe01-vm03", "pe01-vm06");
 
-            // for (String node : nodes) {
-            //     ClientAgg ClientAgg = new ClientAgg(node, 50051);
+            // ClusteringCloudMode(nodes);
 
-              //  try {
-                //     String quasiIdentifierFile = "/home/pe01-vm05/Documents/spark-mllib-grpc-dev/datasets/quasi_identifiers.dat";
-                //     List<List<String>> allQuasiIdentifiers = readQuasiIdentifiersFromFile(quasiIdentifierFile);
-                //     String resultsFile = "/home/" + node + "/Documents/spark-mllib-grpc-dev/datasets/AARes.csv";
-
-                //     for (int i = 2; i < 11; i++) {
-                //         try {
-                //             System.out.println("Processing round " + (i) + " with quasi-identifiers: "
-                //                     + allQuasiIdentifiers.get(i));
-                //             String originalFile = "/home/" + node
-                //                     + "/Documents/spark-mllib-grpc-dev/datasets/banking_synthetic_v1.csv";
-                //             String anonymizedFile = "/home/" + node
-                //                     + "/Documents/spark-mllib-grpc-dev/datasets/anonymized_bank_A" + (i) + ".csv";
-
-                //             // we -2 because we have the same index
-                //             // for datasets A2, A4... A2 is the first dataset set but i=2 is the 4th line in
-                //             // the qusi identifires
-                //             List<String> quasiIdentifiers = allQuasiIdentifiers.get(i - 2);
-
-                //             System.out.println(
-                //                     "Processing round " + (i + 1) + " with quasi-identifiers: " + quasiIdentifiers);
-
-                //             // --- Trigger the new service and get the score ---
-
-                //             ClientAgg.triggerAACalculation(originalFile, anonymizedFile, quasiIdentifiers, resultsFile);
-
-                //         } catch (Exception e) {
-                //             System.out.println("Error processing round " + (i + 1) + ": " + e.getMessage());
-                //             e.printStackTrace();
-                //         }
-                //     }
-
-                //     ClientAgg.getRemoteDatasets(node,
-                //             "/home/" + node + "/Documents/spark-mllib-grpc-dev/datasets/AARes.csv",
-                //             "/home/pe01-vm05/Documents/spark-mllib-grpc-dev/received_files");
-
-                // } finally {
-                //     ClientAgg.shutdown();
-                 //}
-          //  }
-
-            // File outputFolder = new File("/home/pe01-vm05/Documents/spark-mllib-grpc-dev/datasets/agg_results.csv");
-            // if (outputFolder.exists()) {
-            //     cleanCSV("/home/pe01-vm05/Documents/spark-mllib-grpc-dev/datasets/agg_results.csv", 2);
-            // }
-
-            // aggregateCSVFiles("/home/pe01-vm05/Documents/spark-mllib-grpc-dev/received_files",
-            //         "/home/pe01-vm05/Documents/spark-mllib-grpc-dev/datasets/agg_results.csv");
-
-    /////////////////////////////CLUSTRING of CLUSTERS//////////////////////////////
-    /// 
-    ///   
-            long start =0;
-      for (String node : nodes) {
+            long start = 0;
+            for (String node : nodes) {
+                String NodeDir = "/home/" + node + "/Documents/spark-mllib-grpc-dev";
                 ClientAgg ClientAgg = new ClientAgg(node, 50051);
-            start = System.currentTimeMillis();
-            ClientAgg.applyAnalytics("/home/"+  node +"/Documents/spark-mllib-grpc-dev/clustring/bank_3000.csv",
-                    "/home/"+  node +"/Documents/spark-mllib-grpc-dev/outputDataset");
-            ClientAgg.getRemoteDatasets(
-                    "/home/"+  node +"/Documents/spark-mllib-grpc-dev/outputDataset/"+  node +"_kmeans_bank_3000.csv",
-                    "/home/"+System.getProperty("user.name")+"/Documents/spark-mllib-grpc-dev/received_files");
+                start = System.currentTimeMillis();
 
-      }
+                String datasetPath = NodeDir + "/home/ismail/grpc-java-examples-master/clustering/bank_500.csv";
+                String outputPath = NodeDir + "/LR";
 
-      SparkConf conf = new SparkConf()
-              .setAppName("ClusterOfClusters")
-              .setMaster("local[*]"); // Use local mode for testing
-      JavaSparkContext jsc = new JavaSparkContext(conf);
+                SparkSession spark = SparkSession.builder()
+                        .appName("Linear Regression")
+                        .master("local[*]") // Use local mode for testing
+                        .getOrCreate();
+                LinearRegressionAnalytics LRAnalysis = new LinearRegressionAnalytics(spark, datasetPath, outputPath);
+                LRAnalysis.runAnalysis();
+                spark.stop();
 
-      // List of dataset file paths (CSV files)
-               List<String> receivedPaths = getCsvFiles("/home/"+System.getProperty("user.name")+"/Documents/spark-mllib-grpc-dev/received_files");
+                ClientAgg.shutdown();
 
-      // Output directory
-      String outputDir = "/home/"+System.getProperty("user.name")+"/Documents/spark-mllib-grpc-dev/clusterComb/kmeans_bank_3000_clusterOfclusters.csv";
+            }
 
-      // Number of clusters and iterations
-      int numClusters = 5;
-      int numIterations = 20;
-
-      // Create the clustering object
-      ClusterAgg_V1 clustering = new ClusterAgg_V1(
-              jsc,
-              receivedPaths,
-              outputDir,
-              numClusters,
-              numIterations);
-
-      // Run clustering
-      clustering.runClustering();
-      long end = System.currentTimeMillis();
-      logExecutionTime(start, end, "/home/"+  System.getProperty("user.name") +"/Documents/spark-mllib-grpc-dev/received_files/"+nodes.get(0) +"_kmeans_bank_3000.csv",
-              "/home/"+  System.getProperty("user.name") +"/Documents/spark-mllib-grpc-dev/clusterComb/executionTime.csv");
-      // Stop Spark
-      jsc.close();
-      
-    
         } else {
 
             ClientAgg ClientAgg = new ClientAgg("localhost", 50051);
-            long start = System.currentTimeMillis();
-            ClientAgg.applyAnalytics("/home/ismail/grpc-java-examples-master/clustring/bank_3000.csv",
-                    "/home/ismail/grpc-java-examples-master/outputDataset");
-            ClientAgg.getRemoteDatasets(
-                    "/home/ismail/grpc-java-examples-master/outputDataset/ismail_kmeans_bank_3000.csv",
-                    "/home/ismail/grpc-java-examples-master/received_files");
-            // ClientAgg.getRemoteDatasets("/home/ismail/grpc-java-examples-master/outputDataset/executionTime.csv",
-            //         "/home/ismail/grpc-java-examples-master/received_files");
 
-            SparkConf conf = new SparkConf()
-                    .setAppName("ClusterOfClusters")
-                    .setMaster("local[*]"); // Use local mode for testing
-            JavaSparkContext jsc = new JavaSparkContext(conf);
+            String datasetPath = "/home/ismail/grpc-java-examples-master/clustring/bank_500.csv";
+            String outputPath = "/home/ismail/grpc-java-examples-master/LR";
 
-            // List of dataset file paths (CSV files
+            SparkSession spark = SparkSession.builder()
+                    .appName("Linear Regression")
+                    .master("local[*]") // Use local mode for testing
+                    .getOrCreate();
+            // LinearRegressionAnalytics LRAnalysis = new LinearRegressionAnalytics(spark,
+            // datasetPath, outputPath);
+            // LinearRegressionResult dd = LRAnalysis.runAnalysis();
 
-                     List<String> receivedPaths = getCsvFiles("/home/ismail/grpc-java-examples-master/received_files");
+            // List<Long> trainingSizes = Arrays.asList(dd.getTrainingDataSize(),
+            // dd.getTrainingDataSize());
+            // List<String> modelPaths =
+            // Arrays.asList("/home/ismail/grpc-java-examples-master/received_files/modelA",
+            // "/home/ismail/grpc-java-examples-master/received_files/modelB");
+            // PipelineModel aggregatedModel = weightedAggregation(modelPaths,
+            // trainingSizes);
 
-            // Output directory
-            String outputDir = "/home/ismail/grpc-java-examples-master/clusterComb/ismail_kmeans_bank_3000_clusterOfclusters.csv";
+            // // Save the aggregated model
+            // aggregatedModel.write().overwrite()
+            // .save("/home/ismail/grpc-java-examples-master/outputDataset/model_aggregated");
 
-            // Number of clusters and iterations
-            int numClusters = 5;
-            int numIterations = 20;
+            // String modelPath =
+            // "/home/ismail/grpc-java-examples-master/outputDataset/model_aggregated";
 
-            // Create the clustering object
-            ClusterAgg_V1 clustering = new ClusterAgg_V1(
-                    jsc,
-                    receivedPaths,
-                    outputDir,
-                    numClusters,
-                    numIterations);
+            // evaluateModel(spark, dd.getTestData(), modelPath);
 
-            // Run clustering
-            clustering.runClustering();
-            long end = System.currentTimeMillis();
-            logExecutionTime(start, end, "/home/ismail/grpc-java-examples-master/received_files/ismail_kmeans_bank_3000.csv",
-                    "/home/ismail/grpc-java-examples-master/clusterComb/executionTime.csv");
-            // Stop Spark
-            jsc.close();
+            ClientAgg.applyRandomForest("/home/ismail/grpc-java-examples-master/clustring/bank_500.csv",
+                    "outputPath_RandomForestXXX");
 
-            ////////////////////////////////////////////////////////////// AA
-            ////////////////////////////////////////////////////////////// part//////////////////////////////////////////////////////////////////////////////////////
-            ///
-            ///
-            ///
-            // String quasiIdentifierFile =
-            ////////////////////////////////////////////////////////////// "/home/ismail/grpc-java-examples-master/datasets/quasi_identifiers.dat";
-            // List<List<String>> allQuasiIdentifiers =
-            ////////////////////////////////////////////////////////////// readQuasiIdentifiersFromFile(quasiIdentifierFile);
-            // String resultsFile =
-            ////////////////////////////////////////////////////////////// "/home/ismail/grpc-java-examples-master/datasets/AARes.csv";
+            // ************************************************************ */
+            //
+            //
+            //
+            //
+            spark.stop();
 
-            // for (int i = 2; i < 11; i++) {
-            // try {
-            // System.out.println("Processing round " + (i ) + " with quasi-identifiers: "
-            // + allQuasiIdentifiers.get(i));
-            // String originalFile =
-            // "/home/ismail/grpc-java-examples-master/datasets/banking_synthetic_v1.csv";
-            // String anonymizedFile =
-            // "/home/ismail/grpc-java-examples-master/datasets/anonymized_bank_A"+(i)+".csv";
-            // List<String> quasiIdentifiers = allQuasiIdentifiers.get(i);
-
-            // System.out.println("Processing round " + (i + 1) + " with quasi-identifiers:
-            // " + quasiIdentifiers);
-
-            // // --- Trigger the new service and get the score ---
-            // ClientAgg.triggerAACalculation(originalFile, anonymizedFile,
-            // quasiIdentifiers, resultsFile);
-
-            // } catch (Exception e) {
-            // System.out.println("Error processing round " + (i + 1) + ": " +
-            // e.getMessage());
-            // e.printStackTrace();
-            // }
-            // }
-
-            // ClientAgg.getRemoteDatasets("","/home/ismail/grpc-java-examples-master/datasets/AARes.csv",
-            // "/home/ismail/grpc-java-examples-master/received_files");
-
-            // ClientAgg.aggregateCSVFiles("/home/ismail/grpc-java-examples-master/received_files",
-            // "/home/ismail/grpc-java-examples-master/datasets/agg_results.csv");
-
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            ///
-            ///
-            ///
-
-            // String rootDirectory = "/home/ismail/grpc-java-examples-master/LR";
-            // String datasetPrefix = "anonymized_tcloseness";
-            // String outputPath =
-            // "/home/ismail/grpc-java-examples-master/anonymized_tcloseness_aggregated_features.csv";
-
-            // boolean success = LinearRegressionAgg.aggregateNodeResults(
-            // rootDirectory,
-            // datasetPrefix,
-            // outputPath);
-
-            // if (success) {
-            // System.out.println("Node feature importance aggregation completed
-            // successfully!");
-            // } else {
-            // System.out.println("Node feature importance aggregation did not complete
-            // successfully.");
-            // }
             ClientAgg.shutdown();
         }
     }
@@ -568,7 +456,7 @@ public class ClientAgg {
         }
     }
 
-     public static void logExecutionTime(long startTime, long endTime, String datasetPath, String resultsPath) {
+    public static void logExecutionTime(long startTime, long endTime, String datasetPath, String resultsPath) {
         long executionTime = endTime - startTime;
         int tuplesNumber = getDatasetRowCount(datasetPath);
 
@@ -585,13 +473,14 @@ public class ClientAgg {
                 writer.append(tuplesNumber + "," + executionTime + "\n");
             }
 
-            System.out.println("Execution time logged successfully: " 
-                                + tuplesNumber + " tuples, " 
-                                + executionTime + " ms");
+            System.out.println("Execution time logged successfully: "
+                    + tuplesNumber + " tuples, "
+                    + executionTime + " ms");
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
+
     private static int getDatasetRowCount(String datasetPath) {
         int count = 0;
         try (BufferedReader br = new BufferedReader(new FileReader(datasetPath))) {
@@ -622,4 +511,338 @@ public class ClientAgg {
 
         return csvFiles;
     }
+
+    // public static Dataset<Row> ensemblePredictions(Dataset<Row> testData,
+    // List<PipelineModel> models) {
+    // Dataset<Row> result = null;
+
+    // for (int i = 0; i < models.size(); i++) {
+    // Dataset<Row> predictions = models.get(i).transform(testData);
+
+    // if (i == 0) {
+    // result = predictions.withColumnRenamed("prediction", "pred_0");
+    // } else {
+    // result = result.join(
+    // predictions.select("features", "prediction").withColumnRenamed("prediction",
+    // "pred_" + i),
+    // "features");
+    // }
+    // }
+
+    // // Average all predictions
+    // String[] predCols = new String[models.size()];
+    // for (int i = 0; i < models.size(); i++) {
+    // predCols[i] = "pred_" + i;
+    // }
+
+    // result = result.withColumn("ensemble_prediction",
+    // functions.expr("(" + String.join(" + ", predCols) + ") / " + models.size()));
+
+    // return result;
+    // }
+
+    public static Dataset<Row> evaluateModel(SparkSession spark, Dataset<Row> testData, String modelPath) {
+        // Load the trained model
+        PipelineModel model = PipelineModel.load(modelPath);
+
+        // Make predictions on test data
+        Dataset<Row> predictions = model.transform(testData);
+
+        // Create evaluators for different metrics
+        RegressionEvaluator rmseEvaluator = new RegressionEvaluator()
+                .setLabelCol("Point Earned")
+                .setPredictionCol("prediction")
+                .setMetricName("rmse");
+
+        RegressionEvaluator r2Evaluator = new RegressionEvaluator()
+                .setLabelCol("Point Earned")
+                .setPredictionCol("prediction")
+                .setMetricName("r2");
+
+        RegressionEvaluator maeEvaluator = new RegressionEvaluator()
+                .setLabelCol("Point Earned")
+                .setPredictionCol("prediction")
+                .setMetricName("mae");
+
+        RegressionEvaluator mseEvaluator = new RegressionEvaluator()
+                .setLabelCol("Point Earned")
+                .setPredictionCol("prediction")
+                .setMetricName("mse");
+
+        // Calculate all metrics
+        double rmse = rmseEvaluator.evaluate(predictions);
+        double r2 = r2Evaluator.evaluate(predictions);
+        double mae = maeEvaluator.evaluate(predictions);
+        double mse = mseEvaluator.evaluate(predictions);
+
+        // Create a DataFrame to store the model results
+        List<Row> resultRows = new ArrayList<>();
+        resultRows.add(RowFactory.create("RMSE", rmse));
+        resultRows.add(RowFactory.create("R²", r2));
+        resultRows.add(RowFactory.create("Mean Absolute Error", mae));
+        resultRows.add(RowFactory.create("Mean Squared Error", mse));
+
+        // Create the results DataFrame
+        StructType schema = DataTypes.createStructType(new StructField[] {
+                DataTypes.createStructField("Metric", DataTypes.StringType, false),
+                DataTypes.createStructField("Value", DataTypes.DoubleType, false)
+        });
+
+        Dataset<Row> resultsDF = spark.createDataFrame(resultRows, schema);
+        resultsDF.show();
+
+        return resultsDF;
+    }
+
+    public static PipelineModel weightedAggregation(
+            List<String> modelPaths,
+            List<Long> trainingSizes) {
+
+        List<LinearRegressionModel> models = new ArrayList<>();
+        PipelineModel referencePipeline = null;
+
+        for (String path : modelPaths) {
+            PipelineModel pipeline = PipelineModel.load(path);
+            if (referencePipeline == null) {
+                referencePipeline = pipeline;
+            }
+            LinearRegressionModel lrModel = (LinearRegressionModel) pipeline.stages()[pipeline.stages().length - 1];
+            models.add(lrModel);
+        }
+
+        long totalSamples = trainingSizes.stream().mapToLong(Long::longValue).sum();
+
+        // Weighted average based on training data size
+        int numFeatures = models.get(0).coefficients().size();
+        double[] weightedCoeffs = new double[numFeatures];
+        double weightedIntercept = 0.0;
+
+        for (int i = 0; i < models.size(); i++) {
+            double weight = (double) trainingSizes.get(i) / totalSamples;
+
+            double[] coeffs = models.get(i).coefficients().toArray();
+            for (int j = 0; j < numFeatures; j++) {
+                weightedCoeffs[j] += coeffs[j] * weight;
+            }
+
+            weightedIntercept += models.get(i).intercept() * weight;
+        }
+
+        LinearRegressionModel aggregatedLR = new LinearRegressionModel(
+                "weighted_aggregated_model",
+                Vectors.dense(weightedCoeffs),
+                weightedIntercept);
+
+        // Create new pipeline with aggregated model
+        Transformer[] newStages = referencePipeline.stages().clone();
+        newStages[newStages.length - 1] = aggregatedLR;
+
+        return new PipelineModel("aggregated_pipeline", newStages);
+    }
+
+    /****** CLOUD MODE */
+    /********************************** */
+    public static void ClusteringCloudMode(List<String> nodes) throws Exception {
+        long start = 0;
+
+        // Process each node
+        for (String node : nodes) {
+            ClientAgg ClientAgg = new ClientAgg(node, 50051);
+            start = System.currentTimeMillis();
+            ClientAgg.applyAnalytics("/home/" + node + "/Documents/spark-mllib-grpc-dev/clustring/bank_3000.csv",
+                    "/home/" + node + "/Documents/spark-mllib-grpc-dev/outputDataset");
+            ClientAgg.getRemoteDatasets(
+                    "/home/" + node + "/Documents/spark-mllib-grpc-dev/outputDataset/" + node
+                            + "_kmeans_bank_3000.csv",
+                    "/home/" + System.getProperty("user.name") + "/Documents/spark-mllib-grpc-dev/received_files");
+        }
+
+        // Initialize Spark
+        SparkConf conf = new SparkConf()
+                .setAppName("ClusterOfClusters")
+                .setMaster("local[*]"); // Use local mode for testing
+        JavaSparkContext jsc = new JavaSparkContext(conf);
+
+        // List of dataset file paths (CSV files)
+        List<String> receivedPaths = getCsvFiles(
+                "/home/" + System.getProperty("user.name") + "/Documents/spark-mllib-grpc-dev/received_files");
+
+        // Output directory
+        String outputDir = "/home/" + System.getProperty("user.name")
+                + "/Documents/spark-mllib-grpc-dev/clusterComb/kmeans_bank_3000_clusterOfclusters.csv";
+
+        // Number of clusters and iterations
+        int numClusters = 5;
+        int numIterations = 20;
+
+        // Create the clustering object
+        ClusterAgg_V1 clustering = new ClusterAgg_V1(
+                jsc,
+                receivedPaths,
+                outputDir,
+                numClusters,
+                numIterations);
+
+        // Run clustering
+        clustering.runClustering();
+
+        long end = System.currentTimeMillis();
+        logExecutionTime(start, end,
+                "/home/" + System.getProperty("user.name") + "/Documents/spark-mllib-grpc-dev/received_files/"
+                        + nodes.get(0) + "_kmeans_bank_3000.csv",
+                "/home/" + System.getProperty("user.name")
+                        + "/Documents/spark-mllib-grpc-dev/clusterComb/executionTime.csv");
+
+        // Stop Spark
+        jsc.close();
+    }
+
+    public static void AnonymizationAccuracyCloudMode(String message) {
+        // for (String node : nodes) {
+        // ClientAgg ClientAgg = new ClientAgg(node, 50051);
+
+        // try {
+        // String quasiIdentifierFile =
+        // "/home/pe01-vm05/Documents/spark-mllib-grpc-dev/datasets/quasi_identifiers.dat";
+        // List<List<String>> allQuasiIdentifiers =
+        // readQuasiIdentifiersFromFile(quasiIdentifierFile);
+        // String resultsFile = "/home/" + node +
+        // "/Documents/spark-mllib-grpc-dev/datasets/AARes.csv";
+
+        // for (int i = 2; i < 11; i++) {
+        // try {
+        // System.out.println("Processing round " + (i) + " with quasi-identifiers: "
+        // + allQuasiIdentifiers.get(i));
+        // String originalFile = "/home/" + node
+        // + "/Documents/spark-mllib-grpc-dev/datasets/banking_synthetic_v1.csv";
+        // String anonymizedFile = "/home/" + node
+        // + "/Documents/spark-mllib-grpc-dev/datasets/anonymized_bank_A" + (i) +
+        // ".csv";
+
+        // // we -2 because we have the same index
+        // // for datasets A2, A4... A2 is the first dataset set but i=2 is the 4th line
+        // in
+        // // the qusi identifires
+        // List<String> quasiIdentifiers = allQuasiIdentifiers.get(i - 2);
+
+        // System.out.println(
+        // "Processing round " + (i + 1) + " with quasi-identifiers: " +
+        // quasiIdentifiers);
+
+        // // --- Trigger the new service and get the score ---
+
+        // ClientAgg.triggerAACalculation(originalFile, anonymizedFile,
+        // quasiIdentifiers, resultsFile);
+
+        // } catch (Exception e) {
+        // System.out.println("Error processing round " + (i + 1) + ": " +
+        // e.getMessage());
+        // e.printStackTrace();
+        // }
+        // }
+
+        // ClientAgg.getRemoteDatasets(node,
+        // "/home/" + node + "/Documents/spark-mllib-grpc-dev/datasets/AARes.csv",
+        // "/home/pe01-vm05/Documents/spark-mllib-grpc-dev/received_files");
+
+        // } finally {
+        // ClientAgg.shutdown();
+        // }
+        // }
+
+        // File outputFolder = new
+        // File("/home/pe01-vm05/Documents/spark-mllib-grpc-dev/datasets/agg_results.csv");
+        // if (outputFolder.exists()) {
+        // cleanCSV("/home/pe01-vm05/Documents/spark-mllib-grpc-dev/datasets/agg_results.csv",
+        // 2);
+        // }
+
+        // aggregateCSVFiles("/home/pe01-vm05/Documents/spark-mllib-grpc-dev/received_files",
+        // "/home/pe01-vm05/Documents/spark-mllib-grpc-dev/datasets/agg_results.csv");
+    }
+
+    /*********** LOCAL MODE */
+    public static void ClusteringLocalMode(String message) {
+        // long start = System.currentTimeMillis();
+        // ClientAgg.applyAnalytics("/home/ismail/grpc-java-examples-master/clustring/bank_3000.csv",
+        // "/home/ismail/grpc-java-examples-master/outputDataset");
+        // ClientAgg.getRemoteDatasets(
+        // "/home/ismail/grpc-java-examples-master/outputDataset/ismail_kmeans_bank_3000.csv",
+        // "/home/ismail/grpc-java-examples-master/received_files");
+
+        // SparkConf conf = new SparkConf()
+        // .setAppName("ClusterOfClusters")
+        // .setMaster("local[*]"); // Use local mode for testing
+        // JavaSparkContext jsc = new JavaSparkContext(conf);
+
+        // // List of dataset file paths (CSV files
+
+        // List<String> receivedPaths =
+        // getCsvFiles("/home/ismail/grpc-java-examples-master/received_files");
+
+        // // Output directory
+        // String outputDir =
+        // "/home/ismail/grpc-java-examples-master/clusterComb/ismail_kmeans_bank_3000_clusterOfclusters.csv";
+
+        // // Number of clusters and iterations
+        // int numClusters = 5;
+        // int numIterations = 20;
+
+        // // Create the clustering object
+        // ClusterAgg_V1 clustering = new ClusterAgg_V1(
+        // jsc,
+        // receivedPaths,
+        // outputDir,
+        // numClusters,
+        // numIterations);
+
+        // // Run clustering
+        // clustering.runClustering();
+        // long end = System.currentTimeMillis();
+        // logExecutionTime(start, end,
+        // "/home/ismail/grpc-java-examples-master/received_files/ismail_kmeans_bank_3000.csv",
+        // "/home/ismail/grpc-java-examples-master/clusterComb/executionTime.csv");
+        // Stop Spark
+        // jsc.close();
+    }
+
+    public static void AnonymizationAccuracyLocalMode(String message) {
+        // String quasiIdentifierFile =
+        ////////////////////////////////////////////////////////////// "/home/ismail/grpc-java-examples-master/datasets/quasi_identifiers.dat";
+        // List<List<String>> allQuasiIdentifiers =
+        ////////////////////////////////////////////////////////////// readQuasiIdentifiersFromFile(quasiIdentifierFile);
+        // String resultsFile =
+        ////////////////////////////////////////////////////////////// "/home/ismail/grpc-java-examples-master/datasets/AARes.csv";
+
+        // for (int i = 2; i < 11; i++) {
+        // try {
+        // System.out.println("Processing round " + (i ) + " with quasi-identifiers: "
+        // + allQuasiIdentifiers.get(i));
+        // String originalFile =
+        // "/home/ismail/grpc-java-examples-master/datasets/banking_synthetic_v1.csv";
+        // String anonymizedFile =
+        // "/home/ismail/grpc-java-examples-master/datasets/anonymized_bank_A"+(i)+".csv";
+        // List<String> quasiIdentifiers = allQuasiIdentifiers.get(i);
+
+        // System.out.println("Processing round " + (i + 1) + " with quasi-identifiers:
+        // " + quasiIdentifiers);
+
+        // // --- Trigger the new service and get the score ---
+        // ClientAgg.triggerAACalculation(originalFile, anonymizedFile,
+        // quasiIdentifiers, resultsFile);
+
+        // } catch (Exception e) {
+        // System.out.println("Error processing round " + (i + 1) + ": " +
+        // e.getMessage());
+        // e.printStackTrace();
+        // }
+        // }
+
+        // ClientAgg.getRemoteDatasets("","/home/ismail/grpc-java-examples-master/datasets/AARes.csv",
+        // "/home/ismail/grpc-java-examples-master/received_files");
+
+        // ClientAgg.aggregateCSVFiles("/home/ismail/grpc-java-examples-master/received_files",
+        // "/home/ismail/grpc-java-examples-master/datasets/agg_results.csv");
+    }
+
 }
