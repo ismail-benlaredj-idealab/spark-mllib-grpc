@@ -51,6 +51,30 @@ public class RandomForestAnalytics {
     }
 
     /**
+     * Helper method to safely extract double values from Row objects
+     */
+    private double getDoubleValue(Row row, int index) {
+        Object value = row.get(index);
+        if (value == null) {
+            return 0.0;
+        } else if (value instanceof Double) {
+            return (Double) value;
+        } else if (value instanceof Integer) {
+            return ((Integer) value).doubleValue();
+        } else if (value instanceof Long) {
+            return ((Long) value).doubleValue();
+        } else if (value instanceof Float) {
+            return ((Float) value).doubleValue();
+        } else {
+            try {
+                return Double.parseDouble(value.toString());
+            } catch (NumberFormatException e) {
+                return 0.0;
+            }
+        }
+    }
+
+    /**
      * Main method to run the random forest analysis
      * 
      * @return PipelineModel The trained model
@@ -71,13 +95,12 @@ public class RandomForestAnalytics {
         System.out.println("Detected Schema:");
         data.printSchema();
 
-        // Display sample data
-        System.out.println("Sample data:");
-        data.show(5);
-
         // Get column names and determine feature types
         String[] allColumns = data.columns();
         String labelColumn = allColumns[allColumns.length - 1]; // Last column is label
+
+        // Convert label column to double to avoid type issues
+        data = data.withColumn(labelColumn, data.col(labelColumn).cast(DataTypes.DoubleType));
 
         // Create feature columns array (all columns except label)
         String[] featureColumns = Arrays.copyOfRange(allColumns, 0, allColumns.length - 1);
@@ -92,7 +115,8 @@ public class RandomForestAnalytics {
             if (dataType == DataTypes.StringType) {
                 categoricalFeaturesList.add(featureColumns[i]);
             } else {
-                // Assuming numeric types (double, integer, etc.)
+                // Convert numeric columns to double to avoid type issues
+                data = data.withColumn(featureColumns[i], data.col(featureColumns[i]).cast(DataTypes.DoubleType));
                 numericFeaturesList.add(featureColumns[i]);
             }
         }
@@ -103,6 +127,10 @@ public class RandomForestAnalytics {
         System.out.println("Detected label column: " + labelColumn);
         System.out.println("Detected numeric features: " + Arrays.toString(numericFeatures));
         System.out.println("Detected categorical features: " + Arrays.toString(categoricalFeatures));
+
+        // Display sample data
+        System.out.println("Sample data:");
+        data.show(5);
 
         // Pipeline stages
         List<PipelineStage> pipelineStages = new ArrayList<>();
@@ -203,32 +231,32 @@ public class RandomForestAnalytics {
         System.out.println("Predictions and Labels:");
         predictionsAndLabels.show(10);
 
- predictions.select("prediction", labelColumn, "features").show(10);
+        predictions.select("prediction", labelColumn, "features").show(10);
 
-// Save to CSV without features (for easy viewing)
-try {
-    predictions.select("prediction", labelColumn)
-            .coalesce(1)
-            .write()
-            .option("header", "true")
-            .mode("overwrite")
-            .csv(outputDir + "/predictions_csv");
-    System.out.println("Saved predictions (CSV) to " + outputDir + "/predictions_csv directory");
-} catch (Exception e) {
-    System.err.println("Error saving CSV predictions: " + e.getMessage());
-}
+        // Save to CSV without features (for easy viewing)
+        try {
+            predictions.select("prediction", labelColumn)
+                    .coalesce(1)
+                    .write()
+                    .option("header", "true")
+                    .mode("overwrite")
+                    .csv(outputDir + "/predictions_csv");
+            System.out.println("Saved predictions (CSV) to " + outputDir + "/predictions_csv directory");
+        } catch (Exception e) {
+            System.err.println("Error saving CSV predictions: " + e.getMessage());
+        }
 
-// Save to Parquet with all columns (for analysis)
-try {
-    predictions.select("prediction", labelColumn, "features")
-            .coalesce(1)
-            .write()
-            .mode("overwrite")
-            .parquet(outputDir + "/predictions_parquet");
-    System.out.println("Saved full predictions (Parquet) to " + outputDir + "/predictions_parquet directory");
-} catch (Exception e) {
-    System.err.println("Error saving Parquet predictions: " + e.getMessage());
-}
+        // Save to Parquet with all columns (for analysis)
+        try {
+            predictions.select("prediction", labelColumn, "features")
+                    .coalesce(1)
+                    .write()
+                    .mode("overwrite")
+                    .parquet(outputDir + "/predictions_parquet");
+            System.out.println("Saved full predictions (Parquet) to " + outputDir + "/predictions_parquet directory");
+        } catch (Exception e) {
+            System.err.println("Error saving Parquet predictions: " + e.getMessage());
+        }
 
         // Evaluate the model
         RegressionEvaluator evaluator = new RegressionEvaluator()
@@ -319,10 +347,10 @@ try {
                     org.apache.spark.sql.functions.stddev("prediction")).first();
 
             performanceMetrics.append("\nPrediction Statistics:\n");
-            performanceMetrics.append("Min: ").append(predictionStatsRow.getDouble(0)).append("\n");
-            performanceMetrics.append("Max: ").append(predictionStatsRow.getDouble(1)).append("\n");
-            performanceMetrics.append("Mean: ").append(predictionStatsRow.getDouble(2)).append("\n");
-            performanceMetrics.append("StdDev: ").append(predictionStatsRow.getDouble(3)).append("\n");
+            performanceMetrics.append("Min: ").append(getDoubleValue(predictionStatsRow, 0)).append("\n");
+            performanceMetrics.append("Max: ").append(getDoubleValue(predictionStatsRow, 1)).append("\n");
+            performanceMetrics.append("Mean: ").append(getDoubleValue(predictionStatsRow, 2)).append("\n");
+            performanceMetrics.append("StdDev: ").append(getDoubleValue(predictionStatsRow, 3)).append("\n");
 
             // Calculate actual value statistics
             Row actualStatsRow = predictions.select(
@@ -332,10 +360,10 @@ try {
                     org.apache.spark.sql.functions.stddev(labelColumn)).first();
 
             performanceMetrics.append("\nActual Value Statistics:\n");
-            performanceMetrics.append("Min: ").append(actualStatsRow.getDouble(0)).append("\n");
-            performanceMetrics.append("Max: ").append(actualStatsRow.getDouble(1)).append("\n");
-            performanceMetrics.append("Mean: ").append(actualStatsRow.getDouble(2)).append("\n");
-            performanceMetrics.append("StdDev: ").append(actualStatsRow.getDouble(3)).append("\n");
+            performanceMetrics.append("Min: ").append(getDoubleValue(actualStatsRow, 0)).append("\n");
+            performanceMetrics.append("Max: ").append(getDoubleValue(actualStatsRow, 1)).append("\n");
+            performanceMetrics.append("Mean: ").append(getDoubleValue(actualStatsRow, 2)).append("\n");
+            performanceMetrics.append("StdDev: ").append(getDoubleValue(actualStatsRow, 3)).append("\n");
 
             // Calculate error statistics
             Dataset<Row> errorData = predictions.withColumn(
@@ -353,11 +381,11 @@ try {
                     .first();
 
             performanceMetrics.append("\nError Statistics:\n");
-            performanceMetrics.append("Min Error: ").append(errorStatsRow.getDouble(0)).append("\n");
-            performanceMetrics.append("Max Error: ").append(errorStatsRow.getDouble(1)).append("\n");
-            performanceMetrics.append("Mean Error: ").append(errorStatsRow.getDouble(2)).append("\n");
-            performanceMetrics.append("StdDev Error: ").append(errorStatsRow.getDouble(3)).append("\n");
-            performanceMetrics.append("Absolute Mean Error: ").append(errorStatsRow.getDouble(4)).append("\n");
+            performanceMetrics.append("Min Error: ").append(getDoubleValue(errorStatsRow, 0)).append("\n");
+            performanceMetrics.append("Max Error: ").append(getDoubleValue(errorStatsRow, 1)).append("\n");
+            performanceMetrics.append("Mean Error: ").append(getDoubleValue(errorStatsRow, 2)).append("\n");
+            performanceMetrics.append("StdDev Error: ").append(getDoubleValue(errorStatsRow, 3)).append("\n");
+            performanceMetrics.append("Absolute Mean Error: ").append(getDoubleValue(errorStatsRow, 4)).append("\n");
 
             // Save all performance metrics to a file
             Files.write(Paths.get(outputDir + "/model_performance.txt"), performanceMetrics.toString().getBytes());
