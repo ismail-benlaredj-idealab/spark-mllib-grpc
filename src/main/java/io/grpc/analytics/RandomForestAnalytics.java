@@ -203,18 +203,32 @@ public class RandomForestAnalytics {
         System.out.println("Predictions and Labels:");
         predictionsAndLabels.show(10);
 
-        // Save predictions to CSV
-        try {
-            predictionsAndLabels
-                    .coalesce(1)
-                    .write()
-                    .option("header", "true")
-                    .mode("overwrite")
-                    .csv(outputDir + "/predictions");
-            System.out.println("Saved predictions to " + outputDir + "/predictions directory");
-        } catch (Exception e) {
-            System.err.println("Error saving predictions: " + e.getMessage());
-        }
+ predictions.select("prediction", labelColumn, "features").show(10);
+
+// Save to CSV without features (for easy viewing)
+try {
+    predictions.select("prediction", labelColumn)
+            .coalesce(1)
+            .write()
+            .option("header", "true")
+            .mode("overwrite")
+            .csv(outputDir + "/predictions_csv");
+    System.out.println("Saved predictions (CSV) to " + outputDir + "/predictions_csv directory");
+} catch (Exception e) {
+    System.err.println("Error saving CSV predictions: " + e.getMessage());
+}
+
+// Save to Parquet with all columns (for analysis)
+try {
+    predictions.select("prediction", labelColumn, "features")
+            .coalesce(1)
+            .write()
+            .mode("overwrite")
+            .parquet(outputDir + "/predictions_parquet");
+    System.out.println("Saved full predictions (Parquet) to " + outputDir + "/predictions_parquet directory");
+} catch (Exception e) {
+    System.err.println("Error saving Parquet predictions: " + e.getMessage());
+}
 
         // Evaluate the model
         RegressionEvaluator evaluator = new RegressionEvaluator()

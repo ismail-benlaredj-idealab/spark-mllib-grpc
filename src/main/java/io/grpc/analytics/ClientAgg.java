@@ -292,6 +292,8 @@ public class ClientAgg {
 
             ClientAgg.applyRandomForest("/home/ismail/grpc-java-examples-master/clustring/bank_500.csv",
                     "outputPath_RandomForestXXX");
+            ClientAgg.getRemoteDatasets("/home/ismail/grpc-java-examples-master/outputPath_RandomForestXXX",
+                    "/home/ismail/grpc-java-examples-master/received_files");
 
             // ************************************************************ */
             //
